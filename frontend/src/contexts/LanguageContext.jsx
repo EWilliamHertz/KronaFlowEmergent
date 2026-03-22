@@ -44,6 +44,7 @@ const translations = {
       title: 'Settings', profile: 'Profile', name: 'Full Name', email: 'Email',
       organization: 'Organization', language: 'Language', currency: 'Currency',
       saveChanges: 'Save Changes', security: 'Security', preferences: 'Preferences',
+      import: 'Import',
     },
     common: {
       save: 'Save', cancel: 'Cancel', delete: 'Delete', edit: 'Edit', add: 'Add',
@@ -102,6 +103,7 @@ const translations = {
       title: 'Inställningar', profile: 'Profil', name: 'Fullständigt namn', email: 'E-post',
       organization: 'Organisation', language: 'Språk', currency: 'Valuta',
       saveChanges: 'Spara ändringar', security: 'Säkerhet', preferences: 'Inställningar',
+      import: 'Importera',
     },
     common: {
       save: 'Spara', cancel: 'Avbryt', delete: 'Ta bort', edit: 'Redigera',

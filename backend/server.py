@@ -78,6 +78,9 @@ class PaymentCreate(BaseModel):
     date: str
     note: Optional[str] = None
 
+class TransactionBulkCreate(BaseModel):
+    transactions: List[TransactionCreate]
+
 class AIInsightRequest(BaseModel):
     context: Optional[str] = None
 
@@ -385,6 +388,34 @@ async def delete_transaction(txn_id: str, user: dict = Depends(get_current_user)
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return {"message": "Deleted"}
+
+
+@api_router.post("/transactions/bulk")
+async def bulk_import_transactions(data: TransactionBulkCreate, user: dict = Depends(get_current_user)):
+    user_id = user["user_id"]
+    created_count = 0
+    for txn_data in data.transactions:
+        try:
+            date_obj = datetime.strptime(txn_data.date[:10], "%Y-%m-%d")
+        except Exception:
+            date_obj = datetime.now(timezone.utc)
+        txn = {
+            "id": f"txn_{uuid.uuid4().hex[:12]}",
+            "user_id": user_id,
+            "type": txn_data.type,
+            "amount": abs(txn_data.amount),
+            "currency": txn_data.currency,
+            "category": txn_data.category,
+            "description": txn_data.description,
+            "date": txn_data.date[:10],
+            "party": txn_data.party,
+            "month": date_obj.month,
+            "year": date_obj.year,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.transactions.insert_one(txn)
+        created_count += 1
+    return {"imported": created_count}
 
 
 @api_router.get("/transactions/stats")

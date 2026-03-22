@@ -39,14 +39,13 @@ export default function Layout() {
         }`}
       >
         {/* Logo */}
-        <div className="px-6 py-5 border-b border-[#2A2A2A] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-[#4FC3C3] flex items-center justify-center flex-shrink-0 shadow-[0_0_12px_rgba(79,195,195,0.4)]">
-              <span className="text-[#0A0A0A] font-black text-base" style={{ fontFamily: 'Chivo, sans-serif' }}>K</span>
-            </div>
-            <span className="text-white font-black text-lg tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
-              KronaFlow
-            </span>
+        <div className="px-4 py-4 border-b border-[#2A2A2A] flex items-center justify-between">
+          <div className="flex items-center">
+            <img
+              src="https://customer-assets.emergentagent.com/job_kronaflow-preview/artifacts/bv380685_IMG_3033.jpeg"
+              alt="KronaFlow"
+              className="h-10 w-auto object-contain rounded-sm"
+            />
           </div>
           <button className="lg:hidden text-[#A3A3A3] hover:text-white" onClick={() => setSidebarOpen(false)}>
             <X size={18} />

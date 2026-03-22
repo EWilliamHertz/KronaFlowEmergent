@@ -46,13 +46,12 @@ export default function Login() {
       {/* Left panel */}
       <div className="flex-1 flex flex-col justify-center px-8 md:px-12 lg:px-20 max-w-xl mx-auto lg:mx-0 lg:max-w-none w-full lg:w-1/2">
         {/* Logo */}
-        <div className="flex items-center gap-3 mb-10">
-          <div className="w-10 h-10 rounded-full bg-[#4FC3C3] flex items-center justify-center shadow-[0_0_16px_rgba(79,195,195,0.5)]">
-            <span className="text-[#0A0A0A] font-black text-lg" style={{ fontFamily: 'Chivo, sans-serif' }}>K</span>
-          </div>
-          <span className="text-white font-black text-xl tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
-            KronaFlow
-          </span>
+        <div className="mb-10">
+          <img
+            src="https://customer-assets.emergentagent.com/job_kronaflow-preview/artifacts/bv380685_IMG_3033.jpeg"
+            alt="KronaFlow"
+            className="h-14 w-auto object-contain rounded-sm"
+          />
         </div>
 
         <h1 className="text-4xl font-black text-white mb-1 tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>

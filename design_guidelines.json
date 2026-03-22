@@ -1,0 +1,188 @@
+{
+  "theme": "dark",
+  "app_name": "KronaFlow",
+  "app_type": "dashboard",
+  "target_audience": "Individuals and small businesses managing personal and business finances, primarily Swedish/Nordic users",
+  "emotional_tone": "Authoritative, Precise, Futuristic, Elite Financial Control",
+  "visual_mood": "The Technical Look - High-contrast dark mode with grid borders, neon cyan accents, and terminal-like precision.",
+  
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Chivo",
+        "fallback": "sans-serif",
+        "description": "Used for all headings to provide an authoritative, slightly brutalist geometric look perfect for elite fintech. Never use Inter for headings.",
+        "url": "https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&display=swap"
+      },
+      "body": {
+        "family": "Inter",
+        "fallback": "sans-serif",
+        "description": "Used strictly for body text, descriptions, and tabular data for high legibility.",
+        "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      }
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-black tracking-tighter text-white",
+      "h2": "text-2xl md:text-3xl font-bold tracking-tight text-white",
+      "h3": "text-xl md:text-2xl font-bold tracking-tight text-white",
+      "body_lg": "text-lg font-medium text-white",
+      "body": "text-base font-normal text-[#A3A3A3]",
+      "body_sm": "text-sm font-normal text-[#A3A3A3]",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-[#4FC3C3]",
+      "financial_data": "font-['Inter'] tabular-nums tracking-tight text-white font-medium"
+    },
+    "rules": [
+      "Headings must use Chivo with tight tracking (tracking-tight or tracking-tighter).",
+      "Body text must use Inter.",
+      "ALL financial metrics, currencies, and numbers MUST use the 'tabular-nums' class to prevent jitter in tables and charts.",
+      "Labels/Overlines must be uppercase, tiny, and widely spaced."
+    ]
+  },
+
+  "colors": {
+    "background": {
+      "primary": "#0A0A0A",
+      "secondary": "#1A1A1A",
+      "tertiary": "#2A2A2A"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A3A3A3"
+    },
+    "accent": {
+      "primary": "#4FC3C3",
+      "primary_hover": "#3AA8A8",
+      "primary_glow": "rgba(79, 195, 195, 0.4)",
+      "primary_muted": "rgba(79, 195, 195, 0.1)"
+    },
+    "status": {
+      "success": "#10B981",
+      "success_muted": "rgba(16, 185, 129, 0.1)",
+      "warning": "#F59E0B",
+      "warning_muted": "rgba(245, 158, 11, 0.1)",
+      "error": "#EF4444",
+      "error_muted": "rgba(239, 68, 68, 0.1)"
+    },
+    "rules": [
+      "Background primary (#0A0A0A) must be used for the main application canvas.",
+      "Background secondary (#1A1A1A) must be used for cards, sidebars, and dropdowns.",
+      "Background tertiary (#2A2A2A) must be used for subtle borders, dividers, and default hover states.",
+      "Never use pure black (#000000) or generic Tailwind grays without tinting. Stick strictly to the provided hex codes.",
+      "Do NOT use transparent backgrounds for overlays, headers, or dropdowns. They must be solid #1A1A1A with a #2A2A2A border."
+    ]
+  },
+
+  "surfaces_and_shadows": {
+    "cards": {
+      "default": "bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm",
+      "interactive": "bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm transition-all duration-200 hover:border-[#4FC3C3]/50 hover:shadow-[0_0_15px_rgba(79,195,195,0.1)]"
+    },
+    "buttons": {
+      "primary": "bg-[#4FC3C3] text-[#0A0A0A] font-bold rounded-sm transition-all duration-200 hover:bg-[#3AA8A8] shadow-[0_0_10px_rgba(79,195,195,0.3)] hover:shadow-[0_0_20px_rgba(79,195,195,0.5)]",
+      "secondary": "bg-[#1A1A1A] text-white border border-[#2A2A2A] rounded-sm transition-all duration-200 hover:bg-[#2A2A2A] hover:border-[#4FC3C3]/30",
+      "ghost": "bg-transparent text-[#A3A3A3] rounded-sm transition-all duration-200 hover:bg-[#2A2A2A] hover:text-white"
+    },
+    "inputs": {
+      "default": "bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm focus:ring-1 focus:ring-[#4FC3C3] focus:border-[#4FC3C3] transition-all duration-200 placeholder:text-[#A3A3A3]/50"
+    },
+    "rules": [
+      "Use sharp or barely-rounded corners (rounded-sm or rounded-none) to emphasize precision. NO large border-radii.",
+      "Use 'Grid Borders' style: Expose the skeleton. Dashboards should feel like a command center.",
+      "Never use muddy gray drop shadows in dark mode. Use colored light bleeds (cyan/teal glow) or solid 1px borders."
+    ]
+  },
+
+  "layout": {
+    "structure": {
+      "sidebar": "fixed left-0 top-0 bottom-0 w-[280px] bg-[#1A1A1A] border-r border-[#2A2A2A] z-40",
+      "header": "fixed top-0 right-0 left-[280px] h-[80px] bg-[#1A1A1A]/90 backdrop-blur-xl border-b border-[#2A2A2A] z-30",
+      "main_content": "pt-[80px] pl-[280px] min-h-screen bg-[#0A0A0A]"
+    },
+    "grids": {
+      "dashboard_bento": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+      "metric_card": "col-span-1",
+      "main_chart": "col-span-1 md:col-span-2 lg:col-span-3 min-h-[400px]",
+      "side_feed": "col-span-1 row-span-2"
+    },
+    "spacing": [
+      "Use generous spacing: p-6 or p-8 inside cards.",
+      "Maintain a 24px (gap-6) baseline for grid gaps.",
+      "Ensure dense but optically aligned content for tabular data."
+    ],
+    "rules": [
+      "Items inside the grid must stretch to fill height: use h-full and flex column.",
+      "Never center-align the app container. Dashboards must be full width.",
+      "Sidebar is fixed 280px on desktop. On mobile, it should be a hidden drawer accessible via hamburger menu."
+    ]
+  },
+
+  "motion_and_interactions": {
+    "transitions": {
+      "default": "transition-all duration-200 ease-in-out",
+      "hover_lift": "hover:-translate-y-[2px]"
+    },
+    "rules": [
+      "Never use 'transition: all' globally. Apply transitions to specific interactives.",
+      "Hovering over table rows MUST highlight the row: hover:bg-[#2A2A2A] or hover:bg-[#4FC3C3]/5.",
+      "Active navigation links in sidebar should have a left border: border-l-2 border-[#4FC3C3] bg-[#4FC3C3]/10 text-white."
+    ]
+  },
+
+  "visual_enhancers": {
+    "textures": "Add a subtle SVG noise overlay (opacity 2-3%) over the #0A0A0A background to remove the 'digital flatness' and give it a matte terminal feel.",
+    "charts": "Use Recharts. Tooltips MUST have bg-[#1A1A1A] border border-[#2A2A2A]. Lines/Bars must use #4FC3C3, #10B981, and #EF4444.",
+    "icons": "Use @phosphor-icons/react (Weight: 'duotone' for active nav items, 'regular' for standard UI).",
+    "loaders": "Use a minimal #4FC3C3 spinning border or glowing pulse. No heavy generic spinners."
+  },
+
+  "components_and_libraries": {
+    "required_packages": [
+      "@phosphor-icons/react",
+      "recharts",
+      "framer-motion",
+      "sonner",
+      "clsx",
+      "tailwind-merge"
+    ],
+    "shadcn_customizations": [
+      "Button: Override radii to rounded-sm. Update primary colors to #4FC3C3.",
+      "Card: bg-[#1A1A1A] border-[#2A2A2A] rounded-sm.",
+      "Table: Left-aligned, tabular-nums for data cells, border-b-[#2A2A2A].",
+      "Tabs: Solid background, sharp borders, active tab has #4FC3C3 text.",
+      "Progress: bg-[#2A2A2A] with indicator bg-[#4FC3C3]."
+    ]
+  },
+
+  "accessibility_and_testing": {
+    "testing": "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='transaction-submit-button').",
+    "contrast": "Text over backgrounds must exceed 4.5:1 ratio. #A3A3A3 on #0A0A0A is 6.5:1 (Pass). #FFFFFF on #0A0A0A is 21:1 (Pass).",
+    "focus": "All interactive elements must have visible focus rings: focus:outline-none focus:ring-2 focus:ring-[#4FC3C3]/50."
+  },
+
+  "media": {
+    "images": [
+      {
+        "category": "Login Background",
+        "url": "https://images.unsplash.com/photo-1762279389006-43963a0cee55?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBjeWFuJTIwZGF0YSUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzc0MjEwOTAyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract neon cyan lines on dark background. Use for the right/left split pane of the Login/Register screen."
+      },
+      {
+        "category": "Avatar Placeholder",
+        "url": "https://images.pexels.com/photos/4687575/pexels-photo-4687575.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Professional grayscale avatar for the Settings/Profile dropdown in the header."
+      }
+    ]
+  },
+
+  "universal_guidelines_for_main_agent": [
+    "DO NOT use generic centered layouts or simplistic uniform styling. Embrace asymmetry and strict grid alignment.",
+    "DO NOT use emojis as icons. Ever. Use Phosphor Icons.",
+    "Ensure the sidebar is exactly 280px wide and fixed. The main content must be offset by pl-[280px] and pt-[80px].",
+    "Use 'sonner' for all toast notifications. Place the Toaster component in the main App wrapper.",
+    "For the bilingual switcher (SV/EN), implement it in the top header as a sharp toggle or Shadcn Select.",
+    "Debt payoff calculator and Budget rings MUST use Recharts for visualization.",
+    "Always apply 'tabular-nums' to tables, charts, and metric cards displaying SEK, USD, or percentages.",
+    "Component exports MUST use named exports. Pages MUST use default exports.",
+    "All file paths in instructions must assume standard React CRA/Vite structure inside /app/frontend/src."
+  ]
+}

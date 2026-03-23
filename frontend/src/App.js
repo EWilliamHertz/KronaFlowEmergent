@@ -10,6 +10,9 @@ import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
 import Assets from './pages/Assets';
 import Debts from './pages/Debts';
+import Invoices from './pages/Invoices';
+import Inventory from './pages/Inventory';
+import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import './App.css';
 
@@ -52,6 +55,9 @@ function AppRouter() {
         <Route path="/budgets" element={<Budgets />} />
         <Route path="/assets" element={<Assets />} />
         <Route path="/debts" element={<Debts />} />
+        <Route path="/invoices" element={<Invoices />} />
+        <Route path="/inventory" element={<Inventory />} />
+        <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

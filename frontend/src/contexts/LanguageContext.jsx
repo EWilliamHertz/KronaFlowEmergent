@@ -5,6 +5,7 @@ const translations = {
     nav: {
       dashboard: 'Dashboard', transactions: 'Transactions', budgets: 'Budgets',
       assets: 'Assets', debts: 'Debts', settings: 'Settings',
+      invoices: 'Invoices', inventory: 'Inventory', reports: 'Reports',
     },
     dashboard: {
       title: 'Dashboard', totalBalance: 'Total Balance', monthlyIncome: 'Monthly Income',
@@ -64,6 +65,7 @@ const translations = {
     nav: {
       dashboard: 'Instrumentpanel', transactions: 'Transaktioner', budgets: 'Budgetar',
       assets: 'Tillgångar', debts: 'Skulder', settings: 'Inställningar',
+      invoices: 'Fakturor', inventory: 'Lager', reports: 'Rapporter',
     },
     dashboard: {
       title: 'Instrumentpanel', totalBalance: 'Totalt saldo', monthlyIncome: 'Månadsinkomst',

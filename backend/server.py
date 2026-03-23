@@ -47,6 +47,8 @@ class TransactionCreate(BaseModel):
     date: str
     party: Optional[str] = None
     currency: str = "SEK"
+    recurring: bool = False
+    recurrence: Optional[str] = None  # weekly, biweekly, monthly, yearly
 
 class BudgetCreate(BaseModel):
     category: str
@@ -89,6 +91,38 @@ class UpdateProfileRequest(BaseModel):
     organization: Optional[str] = None
     language: Optional[str] = None
     currency: Optional[str] = None
+
+# Invoice models
+class InvoiceItem(BaseModel):
+    description: str
+    quantity: float = 1
+    unit_price: float
+    vat_pct: float = 25.0
+
+class InvoiceCreate(BaseModel):
+    client_name: str
+    client_email: Optional[str] = None
+    client_address: Optional[str] = None
+    items: List[InvoiceItem]
+    issue_date: str
+    due_date: str
+    currency: str = "SEK"
+    notes: Optional[str] = None
+
+class InvoiceStatusUpdate(BaseModel):
+    status: str
+
+# Inventory models
+class InventoryItemCreate(BaseModel):
+    name: str
+    sku: Optional[str] = None
+    quantity: float
+    buy_price: float
+    b2b_price: Optional[float] = None
+    b2c_price: Optional[float] = None
+    vat_pct: float = 25.0
+    description: Optional[str] = None
+    low_stock_threshold: float = 5
 
 
 # --- AUTH HELPERS ---
@@ -349,6 +383,8 @@ async def create_transaction(data: TransactionCreate, user: dict = Depends(get_c
         "party": data.party,
         "month": date_obj.month,
         "year": date_obj.year,
+        "recurring": data.recurring,
+        "recurrence": data.recurrence,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.transactions.insert_one(txn)
@@ -424,11 +460,15 @@ async def get_transaction_stats(
     year: Optional[int] = None,
     user: dict = Depends(get_current_user)
 ):
-    now = datetime.now(timezone.utc)
-    m = month or now.month
-    y = year or now.year
     all_txns = await db.transactions.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(None)
-    period_txns = [t for t in all_txns if t.get("month") == m and t.get("year") == y]
+    # Only filter by period when both month AND year are explicitly provided
+    # Otherwise show ALL-TIME stats so totals match the full transaction list
+    if month is not None and year is not None:
+        period_txns = [t for t in all_txns if t.get("month") == month and t.get("year") == year]
+    elif year is not None:
+        period_txns = [t for t in all_txns if t.get("year") == year]
+    else:
+        period_txns = all_txns  # All time — matches full transaction list
     total_income = sum(t["amount"] for t in period_txns if t["type"] == "income")
     total_expenses = sum(t["amount"] for t in period_txns if t["type"] == "expense")
     category_stats = {}
@@ -686,6 +726,184 @@ async def update_profile(data: UpdateProfileRequest, user: dict = Depends(get_cu
     updated_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     updated_user.pop("hashed_password", None)
     return updated_user
+
+
+# --- INVOICES ---
+
+@api_router.get("/invoices")
+async def get_invoices(status: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {"user_id": user["user_id"]}
+    if status:
+        query["status"] = status
+    invoices = await db.invoices.find(query, {"_id": 0}).to_list(None)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for inv in invoices:
+        if inv.get("status") == "sent" and inv.get("due_date", "9999") < today:
+            inv["status"] = "overdue"
+    invoices.sort(key=lambda x: x.get("issue_date", ""), reverse=True)
+    return invoices
+
+
+@api_router.post("/invoices")
+async def create_invoice(data: InvoiceCreate, user: dict = Depends(get_current_user)):
+    subtotal = sum(item.quantity * item.unit_price for item in data.items)
+    vat_total = sum(item.quantity * item.unit_price * item.vat_pct / 100 for item in data.items)
+    total = subtotal + vat_total
+    inv_num = f"INV-{datetime.now(timezone.utc).strftime('%Y%m')}-{uuid.uuid4().hex[:4].upper()}"
+    invoice = {
+        "id": f"inv_{uuid.uuid4().hex[:12]}",
+        "user_id": user["user_id"],
+        "invoice_number": inv_num,
+        "client_name": data.client_name,
+        "client_email": data.client_email,
+        "client_address": data.client_address,
+        "items": [item.model_dump() for item in data.items],
+        "issue_date": data.issue_date,
+        "due_date": data.due_date,
+        "currency": data.currency,
+        "notes": data.notes,
+        "subtotal": round(subtotal, 2),
+        "vat_total": round(vat_total, 2),
+        "total": round(total, 2),
+        "status": "draft",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.invoices.insert_one(invoice)
+    invoice.pop("_id", None)
+    return invoice
+
+
+@api_router.put("/invoices/{invoice_id}/status")
+async def update_invoice_status(invoice_id: str, data: InvoiceStatusUpdate, user: dict = Depends(get_current_user)):
+    allowed = ["draft", "sent", "paid", "overdue"]
+    if data.status not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    result = await db.invoices.update_one(
+        {"id": invoice_id, "user_id": user["user_id"]},
+        {"$set": {"status": data.status}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+
+
+@api_router.delete("/invoices/{invoice_id}")
+async def delete_invoice(invoice_id: str, user: dict = Depends(get_current_user)):
+    result = await db.invoices.delete_one({"id": invoice_id, "user_id": user["user_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {"message": "Deleted"}
+
+
+# --- INVENTORY ---
+
+@api_router.get("/inventory")
+async def get_inventory(user: dict = Depends(get_current_user)):
+    items = await db.inventory.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(None)
+    for item in items:
+        item["total_value"] = round(item.get("quantity", 0) * item.get("buy_price", 0), 2)
+        item["low_stock"] = item.get("quantity", 0) <= item.get("low_stock_threshold", 5)
+    return items
+
+
+@api_router.post("/inventory")
+async def create_inventory_item(data: InventoryItemCreate, user: dict = Depends(get_current_user)):
+    item = {
+        "id": f"inv_{uuid.uuid4().hex[:12]}",
+        "user_id": user["user_id"],
+        "name": data.name,
+        "sku": data.sku,
+        "quantity": data.quantity,
+        "buy_price": data.buy_price,
+        "b2b_price": data.b2b_price,
+        "b2c_price": data.b2c_price,
+        "vat_pct": data.vat_pct,
+        "description": data.description,
+        "low_stock_threshold": data.low_stock_threshold,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.inventory.insert_one(item)
+    item.pop("_id", None)
+    return item
+
+
+@api_router.put("/inventory/{item_id}")
+async def update_inventory_item(item_id: str, data: InventoryItemCreate, user: dict = Depends(get_current_user)):
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    result = await db.inventory.update_one(
+        {"id": item_id, "user_id": user["user_id"]}, {"$set": update_data}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return await db.inventory.find_one({"id": item_id}, {"_id": 0})
+
+
+@api_router.delete("/inventory/{item_id}")
+async def delete_inventory_item(item_id: str, user: dict = Depends(get_current_user)):
+    result = await db.inventory.delete_one({"id": item_id, "user_id": user["user_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"message": "Deleted"}
+
+
+# --- REPORTS ---
+
+@api_router.get("/reports/summary")
+async def get_report_summary(
+    period: str = "all",  # all, this_month, last_month, this_year
+    user: dict = Depends(get_current_user)
+):
+    now = datetime.now(timezone.utc)
+    all_txns = await db.transactions.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(None)
+
+    if period == "this_month":
+        txns = [t for t in all_txns if t.get("month") == now.month and t.get("year") == now.year]
+    elif period == "last_month":
+        lm = now.month - 1 or 12
+        ly = now.year if now.month > 1 else now.year - 1
+        txns = [t for t in all_txns if t.get("month") == lm and t.get("year") == ly]
+    elif period == "this_year":
+        txns = [t for t in all_txns if t.get("year") == now.year]
+    else:
+        txns = all_txns
+
+    total_income = sum(t["amount"] for t in txns if t["type"] == "income")
+    total_expenses = sum(t["amount"] for t in txns if t["type"] == "expense")
+
+    # Category breakdown
+    cat_data = {}
+    for t in txns:
+        cat = t["category"]
+        if cat not in cat_data:
+            cat_data[cat] = {"income": 0, "expense": 0, "count": 0}
+        cat_data[cat][t["type"]] += t["amount"]
+        cat_data[cat]["count"] += 1
+    by_category = sorted([{"category": k, **v} for k, v in cat_data.items()], key=lambda x: x["expense"], reverse=True)
+
+    # Monthly trend (last 12 months)
+    trend = []
+    for i in range(11, -1, -1):
+        m = now.month - i
+        y = now.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        mt = [t for t in all_txns if t.get("month") == m and t.get("year") == y]
+        trend.append({
+            "month": datetime(y, m, 1).strftime("%b %y"),
+            "income": round(sum(t["amount"] for t in mt if t["type"] == "income"), 2),
+            "expenses": round(sum(t["amount"] for t in mt if t["type"] == "expense"), 2)
+        })
+
+    return {
+        "total_income": total_income,
+        "total_expenses": total_expenses,
+        "net": total_income - total_expenses,
+        "transaction_count": len(txns),
+        "by_category": by_category,
+        "trend": trend,
+        "period": period
+    }
 
 
 # --- APP SETUP ---

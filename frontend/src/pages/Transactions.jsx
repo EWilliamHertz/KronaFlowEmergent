@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Plus, Search, Pencil, Trash2, X, Loader2, BarChart2 } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Loader2, BarChart2, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -18,10 +18,32 @@ const CATEGORY_COLORS = {
 const EXPENSE_CATS = ['food','transport','housing','entertainment','healthcare','shopping','utilities','education','other'];
 const INCOME_CATS = ['salary','freelance','investment','gift','other'];
 
+const RECURRENCE_OPTIONS = [
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Every 2 Weeks' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+];
+
+const STAT_PERIODS = [
+  { value: '', label: 'All Time' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: 'this_year', label: 'This Year' },
+];
+
+const now = new Date();
+const PERIOD_PARAMS = {
+  '': {},
+  'this_month': { month: now.getMonth() + 1, year: now.getFullYear() },
+  'last_month': { month: now.getMonth() === 0 ? 12 : now.getMonth(), year: now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear() },
+  'this_year': { year: now.getFullYear() },
+};
+
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 const today = () => new Date().toISOString().split('T')[0];
 
-const EMPTY = { type: 'expense', amount: '', category: 'food', description: '', date: today(), party: '', currency: 'SEK' };
+const EMPTY = { type: 'expense', amount: '', category: 'food', description: '', date: today(), party: '', currency: 'SEK', recurring: false, recurrence: 'monthly' };
 
 export default function Transactions() {
   const { t } = useLanguage();
@@ -30,6 +52,7 @@ export default function Transactions() {
   const [filter, setFilter] = useState({ type: 'all', search: '', category: '' });
   const [view, setView] = useState('list');
   const [stats, setStats] = useState(null);
+  const [statPeriod, setStatPeriod] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -50,10 +73,11 @@ export default function Transactions() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await axios.get(`${API}/transactions/stats`);
+      const params = PERIOD_PARAMS[statPeriod] || {};
+      const res = await axios.get(`${API}/transactions/stats`, { params });
       setStats(res.data);
     } catch {}
-  }, []);
+  }, [statPeriod]);
 
   useEffect(() => { fetchTxns(); }, [fetchTxns]);
   useEffect(() => { if (view === 'stats') fetchStats(); }, [view, fetchStats]);
@@ -61,7 +85,12 @@ export default function Transactions() {
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
   const openEdit = (txn) => {
     setEditing(txn);
-    setForm({ type: txn.type, amount: txn.amount, category: txn.category, description: txn.description, date: txn.date, party: txn.party || '', currency: txn.currency || 'SEK' });
+    setForm({
+      type: txn.type, amount: txn.amount, category: txn.category,
+      description: txn.description, date: txn.date, party: txn.party || '',
+      currency: txn.currency || 'SEK',
+      recurring: txn.recurring || false, recurrence: txn.recurrence || 'monthly'
+    });
     setModalOpen(true);
   };
 
@@ -69,11 +98,17 @@ export default function Transactions() {
     e.preventDefault();
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        amount: parseFloat(form.amount),
+        recurring: form.recurring,
+        recurrence: form.recurring ? form.recurrence : null,
+      };
       if (editing) {
-        await axios.put(`${API}/transactions/${editing.id}`, form);
+        await axios.put(`${API}/transactions/${editing.id}`, payload);
         toast.success('Transaction updated');
       } else {
-        await axios.post(`${API}/transactions`, form);
+        await axios.post(`${API}/transactions`, payload);
         toast.success('Transaction added');
       }
       setModalOpen(false);
@@ -132,22 +167,30 @@ export default function Transactions() {
                 </button>
               ))}
             </div>
-
             <div className="relative flex-1 min-w-[200px] max-w-xs">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B6B6B]" />
-              <input
-                value={filter.search}
-                onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
-                placeholder={t('common.search')}
-                data-testid="search-input"
+              <input value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
+                placeholder={t('common.search')} data-testid="search-input"
                 className="w-full pl-8 pr-3 py-1.5 bg-[#1A1A1A] border border-[#2A2A2A] text-white rounded-sm text-xs focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
               />
             </div>
           </>
         )}
+
+        {view === 'stats' && (
+          <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden">
+            {STAT_PERIODS.map(p => (
+              <button key={p.value} onClick={() => setStatPeriod(p.value)}
+                className={`px-3 py-1.5 text-xs font-semibold transition-all ${statPeriod === p.value ? 'bg-[#4FC3C3]/20 text-[#4FC3C3]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Transactions List */}
+      {/* Transactions Table */}
       {view === 'list' && (
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm overflow-hidden">
           {loading ? (
@@ -174,7 +217,16 @@ export default function Transactions() {
                   {txns.map(txn => (
                     <tr key={txn.id} className="border-b border-[#2A2A2A] hover:bg-[#4FC3C3]/5 transition-colors">
                       <td className="px-4 py-3 text-xs text-[#A3A3A3] tabular-nums whitespace-nowrap">{txn.date}</td>
-                      <td className="px-4 py-3 text-sm text-white font-medium max-w-[160px] truncate">{txn.description}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-white font-medium truncate max-w-[140px]">{txn.description}</span>
+                          {txn.recurring && (
+                            <span title={txn.recurrence} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm bg-[#4FC3C3]/10 text-[#4FC3C3] text-xs">
+                              <RefreshCw size={9} />
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-0.5 rounded-sm text-xs font-medium capitalize"
                           style={{ background: `${CATEGORY_COLORS[txn.category] || '#6B7280'}20`, color: CATEGORY_COLORS[txn.category] || '#6B7280' }}>
@@ -187,12 +239,8 @@ export default function Transactions() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => openEdit(txn)} data-testid={`edit-txn-${txn.id}`} className="text-[#6B6B6B] hover:text-[#4FC3C3] transition-colors">
-                            <Pencil size={13} />
-                          </button>
-                          <button onClick={() => handleDelete(txn.id)} data-testid={`delete-txn-${txn.id}`} className="text-[#6B6B6B] hover:text-[#EF4444] transition-colors">
-                            <Trash2 size={13} />
-                          </button>
+                          <button onClick={() => openEdit(txn)} className="text-[#6B6B6B] hover:text-[#4FC3C3] transition-colors"><Pencil size={13} /></button>
+                          <button onClick={() => handleDelete(txn.id)} className="text-[#6B6B6B] hover:text-[#EF4444] transition-colors"><Trash2 size={13} /></button>
                         </div>
                       </td>
                     </tr>
@@ -205,50 +253,60 @@ export default function Transactions() {
       )}
 
       {/* Stats View */}
-      {view === 'stats' && stats && (
+      {view === 'stats' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: 'Total Income', val: fmt(stats.total_income), color: '#10B981' },
-              { label: 'Total Expenses', val: fmt(stats.total_expenses), color: '#F59E0B' },
-              { label: 'Net', val: fmt(stats.net), color: stats.net >= 0 ? '#10B981' : '#EF4444' },
-              { label: 'Transactions', val: stats.transaction_count, color: '#4FC3C3' },
-            ].map(({ label, val, color }) => (
-              <div key={label} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4">
-                <p className="text-[#6B6B6B] text-xs mb-1">{label}</p>
-                <p className="font-bold tabular-nums text-lg" style={{ color }}>{val}</p>
+          {!stats ? (
+            <div className="flex items-center justify-center py-12"><Loader2 size={20} className="animate-spin text-[#4FC3C3]" /></div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { label: 'Total Income', val: `${fmt(stats.total_income)} SEK`, color: '#10B981' },
+                  { label: 'Total Expenses', val: `${fmt(stats.total_expenses)} SEK`, color: '#F59E0B' },
+                  { label: 'Net', val: `${fmt(stats.net)} SEK`, color: stats.net >= 0 ? '#10B981' : '#EF4444' },
+                  { label: 'Transactions', val: stats.transaction_count, color: '#4FC3C3' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4">
+                    <p className="text-[#6B6B6B] text-xs mb-1">{label}</p>
+                    <p className="font-bold tabular-nums text-lg" style={{ color }}>{val}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
-              <h3 className="text-sm font-bold text-white mb-4">By Category</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={stats.by_category} margin={{ left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
-                  <XAxis dataKey="category" tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '2px', fontSize: 11 }} />
-                  <Bar dataKey="expense" name="Expense" fill="#F59E0B" radius={[2,2,0,0]} />
-                  <Bar dataKey="income" name="Income" fill="#4FC3C3" radius={[2,2,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
-              <h3 className="text-sm font-bold text-white mb-4">Expense Distribution</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={stats.by_category.filter(c => c.expense > 0)} dataKey="expense" nameKey="category" cx="50%" cy="50%" outerRadius={80}>
-                    {stats.by_category.filter(c => c.expense > 0).map((entry, i) => (
-                      <Cell key={i} fill={CATEGORY_COLORS[entry.category] || '#6B7280'} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '2px', fontSize: 11 }} />
-                  <Legend formatter={(v) => <span style={{ color: '#A3A3A3', fontSize: 11 }}>{v}</span>} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
+                  <h3 className="text-sm font-bold text-white mb-4">Spending by Category</h3>
+                  {stats.by_category.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={stats.by_category} margin={{ left: -20 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
+                        <XAxis dataKey="category" tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <Tooltip contentStyle={{ background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '2px', fontSize: 11 }} />
+                        <Bar dataKey="expense" name="Expense" fill="#F59E0B" radius={[2,2,0,0]} />
+                        <Bar dataKey="income" name="Income" fill="#4FC3C3" radius={[2,2,0,0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : <p className="text-[#6B6B6B] text-sm text-center py-12">No data for this period</p>}
+                </div>
+                <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
+                  <h3 className="text-sm font-bold text-white mb-4">Expense Distribution</h3>
+                  {stats.by_category.some(c => c.expense > 0) ? (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <PieChart>
+                        <Pie data={stats.by_category.filter(c => c.expense > 0)} dataKey="expense" nameKey="category" cx="50%" cy="50%" outerRadius={80}>
+                          {stats.by_category.filter(c => c.expense > 0).map((entry, i) => (
+                            <Cell key={i} fill={CATEGORY_COLORS[entry.category] || '#6B7280'} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '2px', fontSize: 11 }} />
+                        <Legend formatter={(v) => <span style={{ color: '#A3A3A3', fontSize: 11 }}>{v}</span>} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : <p className="text-[#6B6B6B] text-sm text-center py-12">No expense data</p>}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -315,7 +373,44 @@ export default function Transactions() {
               />
             </div>
 
-            <div className="flex gap-3 pt-2">
+            {/* Recurring Toggle */}
+            <div className="border border-[#2A2A2A] rounded-sm p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RefreshCw size={14} className="text-[#4FC3C3]" />
+                  <span className="text-sm font-semibold text-white">Recurring Transaction</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, recurring: !f.recurring }))}
+                  data-testid="recurring-toggle"
+                  className={`relative w-10 h-5 rounded-full transition-all duration-200 ${form.recurring ? 'bg-[#4FC3C3]' : 'bg-[#2A2A2A]'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${form.recurring ? 'left-5' : 'left-0.5'}`} />
+                </button>
+              </div>
+              {form.recurring && (
+                <div>
+                  <label className="text-xs text-[#6B6B6B] mb-1 block">Repeat</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {RECURRENCE_OPTIONS.map(opt => (
+                      <button key={opt.value} type="button"
+                        onClick={() => setForm(f => ({ ...f, recurrence: opt.value }))}
+                        className={`px-2.5 py-1 rounded-sm text-xs font-medium transition-all ${
+                          form.recurrence === opt.value
+                            ? 'bg-[#4FC3C3] text-[#0A0A0A]'
+                            : 'bg-[#0A0A0A] border border-[#2A2A2A] text-[#A3A3A3] hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-1">
               <button type="button" onClick={() => setModalOpen(false)}
                 className="flex-1 py-2 rounded-sm border border-[#2A2A2A] text-[#A3A3A3] text-sm font-medium hover:bg-[#2A2A2A] transition-all">
                 {t('common.cancel')}

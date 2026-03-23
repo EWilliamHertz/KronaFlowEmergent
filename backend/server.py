@@ -426,6 +426,15 @@ async def delete_transaction(txn_id: str, user: dict = Depends(get_current_user)
     return {"message": "Deleted"}
 
 
+@api_router.post("/transactions/delete-bulk")
+async def bulk_delete_transactions(data: dict, user: dict = Depends(get_current_user)):
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="No IDs provided")
+    result = await db.transactions.delete_many({"id": {"$in": ids}, "user_id": user["user_id"]})
+    return {"deleted": result.deleted_count}
+
+
 @api_router.post("/transactions/bulk")
 async def bulk_import_transactions(data: TransactionBulkCreate, user: dict = Depends(get_current_user)):
     user_id = user["user_id"]

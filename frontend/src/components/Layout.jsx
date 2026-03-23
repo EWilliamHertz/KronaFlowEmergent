@@ -47,7 +47,8 @@ export default function Layout() {
             <img
               src="https://customer-assets.emergentagent.com/job_kronaflow-preview/artifacts/bv380685_IMG_3033.jpeg"
               alt="KronaFlow"
-              className="h-10 w-auto object-contain rounded-sm"
+              className="h-14 w-auto object-contain"
+              style={{ mixBlendMode: 'multiply', filter: 'contrast(1.1)' }}
             />
           </div>
           <button className="lg:hidden text-[#A3A3A3] hover:text-white" onClick={() => setSidebarOpen(false)}>

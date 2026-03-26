@@ -10,14 +10,18 @@
       "use": "@vercel/python"
     }
   ],
-  "rewrites": [
+"rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "backend/server.py"
     },
     {
-      "source": "/(.*)",
+      "source": "/(.*\\..*)",
       "destination": "/frontend/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/frontend/index.html"
     }
   ]
 }

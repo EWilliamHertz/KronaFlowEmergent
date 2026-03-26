@@ -11,8 +11,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
 import requests as http_requests
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-
+from openai import AsyncOpenAI
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -715,14 +714,17 @@ Financial Summary for {user.get('name', 'User')} ({now.strftime('%B %Y')}):
     if data.context:
         financial_summary += f"\n\nUser Question: {data.context}"
 
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"ai_{user_id}_{uuid.uuid4().hex[:8]}",
-        system_message="You are KronaFlow's AI financial advisor. Analyze the user's financial data and provide concise, actionable insights. Be specific with numbers. Keep response under 250 words. Use bullet points."
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-
-    response = await chat.send_message(UserMessage(text=financial_summary))
-    return {"insights": response}
+    client = AsyncOpenAI(api_key=EMERGENT_LLM_KEY)
+    
+    response = await client.chat.completions.create(
+        model="gpt-4o", # Standard public model
+        messages=[
+            {"role": "system", "content": "You are KronaFlow's AI financial advisor. Analyze the user's financial data and provide concise, actionable insights. Be specific with numbers. Keep response under 250 words. Use bullet points."},
+            {"role": "user", "content": financial_summary}
+        ]
+    )
+    
+    return {"insights": response.choices[0].message.content}
 
 
 # --- PROFILE ---

@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Loader2, PieChart } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
+import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -33,8 +34,11 @@ export default function Budgets() {
     setLoading(true);
     try {
       const res = await axios.get(`${API}/budgets`, { params: { month, year } });
-      setBudgets(res.data);
-    } catch { toast.error('Failed to load budgets'); }
+      setBudgets(extractArray(res.data, 'budgets'));
+    } catch (err) { 
+      console.error('Failed to load budgets:', err);
+      toast.error('Failed to load budgets'); 
+    }
     finally { setLoading(false); }
   }, [month, year]);
 
@@ -89,8 +93,9 @@ export default function Budgets() {
     else setMonth(m => m + 1);
   };
 
-  const totalAllocated = budgets.reduce((s, b) => s + b.allocated_amount, 0);
-  const totalSpent = budgets.reduce((s, b) => s + (b.spent || 0), 0);
+  const safeArray = Array.isArray(budgets) ? budgets : [];
+  const totalAllocated = safeArray.reduce((s, b) => s + (b.allocated_amount || 0), 0);
+  const totalSpent = safeArray.reduce((s, b) => s + (b.spent || 0), 0);
 
   return (
     <div className="space-y-5" data-testid="budgets-page">
@@ -122,7 +127,7 @@ export default function Budgets() {
       </div>
 
       {/* Summary bar */}
-      {budgets.length > 0 && (
+      {safeArray.length > 0 && (
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-[#A3A3A3] font-medium">Monthly Budget Utilization</span>
@@ -142,7 +147,7 @@ export default function Budgets() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1,2,3].map(i => <div key={i} className="skeleton h-36 rounded-sm" />)}
         </div>
-      ) : budgets.length === 0 ? (
+      ) : safeArray.length === 0 ? (
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-12 flex flex-col items-center gap-3">
           <PieChart size={36} className="text-[#2A2A2A]" />
           <p className="text-[#6B6B6B] text-sm">{t('budgets.noBudgets')}</p>
@@ -150,7 +155,7 @@ export default function Budgets() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="budget-cards">
-          {budgets.map(b => {
+          {safeArray.map(b => {
             const pct = b.percentage || 0;
             const barColor = pct >= 90 ? '#EF4444' : pct >= 70 ? '#F59E0B' : '#4FC3C3';
             const remaining = b.allocated_amount - (b.spent || 0);

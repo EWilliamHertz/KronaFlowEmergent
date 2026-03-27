@@ -81,7 +81,12 @@ class Budget(Base):
     currency = Column(String, default="SEK")
     month = Column(Integer, nullable=False)
     year = Column(Integer, nullable=False)
-
+class Category(Base):
+    __tablename__ = "categories"
+    id = Column(String, primary_key=True, default=lambda: f"cat_{uuid.uuid4().hex[:12]}")
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
+    name = Column(String, nullable=False)
+    type = Column(String, nullable=False) # e.g., 'income' or 'expense'
 class Asset(Base):
     __tablename__ = "assets"
     id = Column(String, primary_key=True, default=lambda: f"ast_{uuid.uuid4().hex[:12]}")
@@ -200,7 +205,9 @@ class TransactionCreate(BaseModel):
     currency: str = "SEK"
     recurring: bool = False
     recurrence: Optional[str] = None
-
+class CategoryCreate(BaseModel):
+    name: str
+    type: str
 class TransactionBulkCreate(BaseModel):
     transactions: List[TransactionCreate]
 
@@ -287,7 +294,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
+# --- CATEGORIES ---
 
+@api_router.get("/categories")
+async def get_categories(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(Category).where(Category.user_id == user.id))
+    return [to_dict(c) for c in result.scalars().all()]
+
+@api_router.post("/categories")
+async def create_category(data: CategoryCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    # Check if category already exists to avoid duplicates
+    existing = await session.execute(
+        select(Category).where(Category.user_id == user.id, Category.name == data.name, Category.type == data.type)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Category already exists")
+        
+    new_cat = Category(user_id=user.id, name=data.name, type=data.type)
+    session.add(new_cat)
+    await session.commit()
+    await session.refresh(new_cat)
+    return to_dict(new_cat)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

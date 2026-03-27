@@ -5,7 +5,15 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
-import { API } from '../config/api';
+
+// Automatically construct API URL, fallback to local if env is missing
+const API = (process.env.REACT_APP_BACKEND_URL || '') + '/api';
+
+// Safe number formatter
+const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
+const today = () => new Date().toISOString().split('T')[0];
+
+const EMPTY = { type: 'expense', amount: '', category: '', description: '', date: today(), party: '', currency: 'SEK', recurring: false, recurrence: 'monthly' };
 
 const CATEGORY_COLORS = {
   food: '#10B981', transport: '#3B82F6', housing: '#8B5CF6',
@@ -13,9 +21,6 @@ const CATEGORY_COLORS = {
   utilities: '#06B6D4', education: '#14B8A6', salary: '#10B981',
   freelance: '#4FC3C3', investment: '#8B5CF6', gift: '#F59E0B', other: '#6B7280'
 };
-
-const EXPENSE_CATS = ['food','transport','housing','entertainment','healthcare','shopping','utilities','education','other'];
-const INCOME_CATS = ['salary','freelance','investment','gift','other'];
 
 const RECURRENCE_OPTIONS = [
   { value: 'weekly', label: 'Weekly' },
@@ -39,11 +44,6 @@ const PERIOD_PARAMS = {
   'this_year': { year: now.getFullYear() },
 };
 
-const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
-const today = () => new Date().toISOString().split('T')[0];
-
-const EMPTY = { type: 'expense', amount: '', category: 'food', description: '', date: today(), party: '', currency: 'SEK', recurring: false, recurrence: 'monthly' };
-
 export default function Transactions() {
   const { t } = useLanguage();
   const [txns, setTxns] = useState([]);
@@ -52,11 +52,18 @@ export default function Transactions() {
   const [view, setView] = useState('list');
   const [stats, setStats] = useState(null);
   const [statPeriod, setStatPeriod] = useState('');
+  
+  // Dynamic Categories State
+  const [categories, setCategories] = useState([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
+  // Fetch Transactions
   const fetchTxns = useCallback(async () => {
     setLoading(true);
     try {
@@ -65,55 +72,85 @@ export default function Transactions() {
       if (filter.category) params.category = filter.category;
       if (filter.search) params.search = filter.search;
       
-      console.log('📡 Fetching transactions from:', `${API}/transactions`, { params });
-      const res = await axios.get(`${API}/transactions`, { params });
+      const token = localStorage.getItem('session_token');
+      const res = await axios.get(`${API}/transactions`, { 
+        params,
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
-      // Handle different response formats
       let data = res.data;
-      console.log('📦 Raw response:', data);
-      
-      // If the response is an object with a 'data' or 'transactions' key, extract it
       if (data && typeof data === 'object' && !Array.isArray(data)) {
-        if (Array.isArray(data.transactions)) {
-          data = data.transactions;
-        } else if (Array.isArray(data.data)) {
-          data = data.data;
-        } else {
-          console.warn('⚠️ Unexpected response format:', data);
-          data = [];
-        }
+        data = data.transactions || data.data || [];
       }
-      
-      // Ensure data is an array
-      if (!Array.isArray(data)) {
-        console.error('❌ Response is not an array:', data);
-        data = [];
-      }
-      
+      if (!Array.isArray(data)) data = [];
       setTxns(data);
     } catch (err) {
-      console.error('❌ Failed to load transactions:', err);
-      toast.error(`Failed to load transactions: ${err.message}`);
+      console.error('Failed to load transactions:', err);
+      toast.error(`Failed to load transactions`);
       setTxns([]);
+    } finally { 
+      setLoading(false); 
     }
-    finally { setLoading(false); }
   }, [filter]);
 
+  // Fetch Stats
   const fetchStats = useCallback(async () => {
     try {
       const params = PERIOD_PARAMS[statPeriod] || {};
-      const res = await axios.get(`${API}/transactions/stats`, { params });
+      const token = localStorage.getItem('session_token');
+      const res = await axios.get(`${API}/transactions/stats`, { 
+        params,
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setStats(res.data);
     } catch (err) {
-      console.error('❌ Failed to load stats:', err);
       toast.error('Failed to load statistics');
     }
   }, [statPeriod]);
 
-  useEffect(() => { fetchTxns(); }, [fetchTxns]);
+  // Fetch Categories
+  const fetchCategories = useCallback(async () => {
+    try {
+        const token = localStorage.getItem('session_token');
+        const res = await axios.get(`${API}/categories`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        setCategories(res.data);
+    } catch (err) {
+        console.error("Failed to fetch categories");
+    }
+  }, []);
+
+  useEffect(() => { fetchTxns(); fetchCategories(); }, [fetchTxns, fetchCategories]);
   useEffect(() => { if (view === 'stats') fetchStats(); }, [view, fetchStats]);
 
-  const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
+  // Create new Category
+  const handleCreateCategory = async (type) => {
+    if (!newCategoryName.trim()) return;
+    try {
+        const token = localStorage.getItem('session_token');
+        const res = await axios.post(`${API}/categories`, {
+            name: newCategoryName,
+            type: type 
+        }, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        // Add new category to state and auto-select it in the form
+        setCategories([...categories, res.data]);
+        setForm({ ...form, category: res.data.name });
+        
+        // Reset mini-form
+        setNewCategoryName("");
+        setIsAddingCategory(false);
+        toast.success('Category created!');
+    } catch (err) {
+        toast.error(err.response?.data?.detail || "Failed to create category");
+    }
+  };
+
+  const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); setIsAddingCategory(false); };
+  
   const openEdit = (txn) => {
     setEditing(txn);
     setForm({
@@ -123,10 +160,16 @@ export default function Transactions() {
       recurring: txn.recurring || false, recurrence: txn.recurrence || 'monthly'
     });
     setModalOpen(true);
+    setIsAddingCategory(false);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!form.category) {
+        toast.error("Please select or create a category");
+        return;
+    }
+    
     setSaving(true);
     try {
       const payload = {
@@ -135,11 +178,15 @@ export default function Transactions() {
         recurring: form.recurring,
         recurrence: form.recurring ? form.recurrence : null,
       };
+      
+      const token = localStorage.getItem('session_token');
+      const config = { headers: { 'Authorization': `Bearer ${token}` } };
+      
       if (editing) {
-        await axios.put(`${API}/transactions/${editing.id}`, payload);
+        await axios.put(`${API}/transactions/${editing.id}`, payload, config);
         toast.success('Transaction updated');
       } else {
-        await axios.post(`${API}/transactions`, payload);
+        await axios.post(`${API}/transactions`, payload, config);
         toast.success('Transaction added');
       }
       setModalOpen(false);
@@ -152,26 +199,27 @@ export default function Transactions() {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this transaction?')) return;
     try {
-      await axios.delete(`${API}/transactions/${id}`);
+      const token = localStorage.getItem('session_token');
+      await axios.delete(`${API}/transactions/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       toast.success('Deleted');
       fetchTxns();
     } catch { toast.error('Failed to delete'); }
   };
-
-  const cats = form.type === 'income' ? INCOME_CATS : EXPENSE_CATS;
 
   return (
     <div className="space-y-5" data-testid="transactions-page">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-black text-white tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
-          {t('transactions.title')}
+          {t('transactions.title') || "Transactions"}
         </h1>
         <button onClick={openAdd} data-testid="add-transaction-btn"
           className="flex items-center gap-2 px-4 py-2 rounded-sm bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold hover:bg-[#3AA8A8] transition-all shadow-[0_0_10px_rgba(79,195,195,0.3)]"
         >
           <Plus size={15} />
-          {t('transactions.addTransaction')}
+          Add Transaction
         </button>
       </div>
 
@@ -182,7 +230,7 @@ export default function Transactions() {
             <button key={v} onClick={() => setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold transition-all ${view === v ? 'bg-[#4FC3C3] text-[#0A0A0A]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
             >
-              {v === 'list' ? 'Transactions' : t('transactions.statistics')}
+              {v === 'list' ? 'List' : 'Statistics'}
             </button>
           ))}
         </div>
@@ -194,14 +242,14 @@ export default function Transactions() {
                 <button key={tp} onClick={() => setFilter(f => ({ ...f, type: tp }))}
                   className={`px-3 py-1.5 text-xs font-semibold capitalize transition-all ${filter.type === tp ? 'bg-[#4FC3C3]/20 text-[#4FC3C3]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
                 >
-                  {t(`transactions.${tp}`) || tp}
+                  {tp}
                 </button>
               ))}
             </div>
             <div className="relative flex-1 min-w-[200px] max-w-xs">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B6B6B]" />
               <input value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
-                placeholder={t('common.search')} data-testid="search-input"
+                placeholder="Search..." data-testid="search-input"
                 className="w-full pl-8 pr-3 py-1.5 bg-[#1A1A1A] border border-[#2A2A2A] text-white rounded-sm text-xs focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
               />
             </div>
@@ -231,8 +279,8 @@ export default function Transactions() {
           ) : txns.length === 0 ? (
             <div className="p-12 flex flex-col items-center gap-3">
               <BarChart2 size={32} className="text-[#2A2A2A]" />
-              <p className="text-[#6B6B6B] text-sm">{t('transactions.noTransactions')}</p>
-              <button onClick={openAdd} className="text-[#4FC3C3] text-xs font-semibold hover:underline">{t('transactions.addTransaction')}</button>
+              <p className="text-[#6B6B6B] text-sm">No transactions found.</p>
+              <button onClick={openAdd} className="text-[#4FC3C3] text-xs font-semibold hover:underline">Add one now</button>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -330,7 +378,6 @@ export default function Transactions() {
                           ))}
                         </Pie>
                         <Tooltip contentStyle={{ background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '2px', fontSize: 11 }} />
-                        <Legend formatter={(v) => <span style={{ color: '#A3A3A3', fontSize: 11 }}>{v}</span>} />
                       </PieChart>
                     </ResponsiveContainer>
                   ) : <p className="text-[#6B6B6B] text-sm text-center py-12">No expense data</p>}
@@ -343,20 +390,21 @@ export default function Transactions() {
 
       {/* Add/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md" data-testid="transaction-modal">
+        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md">
           <DialogHeader>
             <DialogTitle className="text-white font-bold" style={{ fontFamily: 'Chivo, sans-serif' }}>
-              {editing ? t('transactions.editTransaction') : t('transactions.addTransaction')}
+              {editing ? 'Edit Transaction' : 'Add Transaction'}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSave} className="space-y-4">
+            
             {/* Type Toggle */}
             <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden">
               {['expense','income'].map(tp => (
-                <button key={tp} type="button" onClick={() => setForm(f => ({ ...f, type: tp, category: tp === 'income' ? 'salary' : 'food' }))}
+                <button key={tp} type="button" onClick={() => setForm(f => ({ ...f, type: tp, category: '' }))}
                   className={`flex-1 py-2 text-xs font-bold capitalize transition-all ${form.type === tp ? 'bg-[#4FC3C3] text-[#0A0A0A]' : 'bg-transparent text-[#A3A3A3] hover:text-white'}`}
                 >
-                  {t(`transactions.${tp}`)}
+                  {tp}
                 </button>
               ))}
             </div>
@@ -365,34 +413,72 @@ export default function Transactions() {
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Amount</label>
                 <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                  placeholder="0" required min="0" step="0.01" data-testid="amount-input"
-                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+                  placeholder="0" required min="0" step="0.01"
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
                 />
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Date</label>
                 <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                  required data-testid="date-input"
-                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] [color-scheme:dark]"
+                  required className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] [color-scheme:dark]"
                 />
               </div>
             </div>
 
+            {/* DYNAMIC CATEGORY SECTION */}
             <div>
               <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Category</label>
               <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                data-testid="category-select"
                 className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
               >
-                {cats.map(c => <option key={c} value={c} className="bg-[#1A1A1A]">{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
+                <option value="">Select a category...</option>
+                {categories
+                    .filter(c => c.type === form.type)
+                    .map(cat => (
+                        <option key={cat.id} value={cat.name} className="bg-[#1A1A1A] capitalize">{cat.name}</option>
+                ))}
               </select>
+
+              {!isAddingCategory ? (
+                <button 
+                    type="button" 
+                    onClick={() => setIsAddingCategory(true)}
+                    className="text-xs text-[#4FC3C3] hover:underline flex items-center gap-1 mt-2 font-semibold"
+                >
+                    <Plus size={12} /> Create new category
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 mt-2 p-2 bg-[#0A0A0A] rounded-sm border border-[#2A2A2A]">
+                    <input 
+                        type="text" 
+                        placeholder="New category name" 
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        className="flex-1 px-2 py-1 bg-[#1A1A1A] border border-[#2A2A2A] text-white rounded-sm text-xs focus:outline-none"
+                    />
+                    <button 
+                        type="button"
+                        onClick={() => handleCreateCategory(form.type)}
+                        className="bg-[#4FC3C3] text-[#0A0A0A] px-3 py-1 rounded-sm text-xs font-bold"
+                    >
+                        Save
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => { setIsAddingCategory(false); setNewCategoryName(""); }}
+                        className="text-[#6B6B6B] hover:text-white px-2 py-1 text-xs"
+                    >
+                        Cancel
+                    </button>
+                </div>
+              )}
             </div>
 
             <div>
               <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Description</label>
               <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                placeholder="What was this for?" required data-testid="description-input"
-                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+                placeholder="What was this for?" required 
+                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
               />
             </div>
 
@@ -400,56 +486,19 @@ export default function Transactions() {
               <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Party (optional)</label>
               <input type="text" value={form.party} onChange={e => setForm(f => ({ ...f, party: e.target.value }))}
                 placeholder="Store, person, etc."
-                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
               />
             </div>
 
-            {/* Recurring Toggle */}
-            <div className="border border-[#2A2A2A] rounded-sm p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <RefreshCw size={14} className="text-[#4FC3C3]" />
-                  <span className="text-sm font-semibold text-white">Recurring Transaction</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, recurring: !f.recurring }))}
-                  data-testid="recurring-toggle"
-                  className={`relative w-10 h-5 rounded-full transition-all duration-200 ${form.recurring ? 'bg-[#4FC3C3]' : 'bg-[#2A2A2A]'}`}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${form.recurring ? 'left-5' : 'left-0.5'}`} />
-                </button>
-              </div>
-              {form.recurring && (
-                <div>
-                  <label className="text-xs text-[#6B6B6B] mb-1 block">Repeat</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {RECURRENCE_OPTIONS.map(opt => (
-                      <button key={opt.value} type="button"
-                        onClick={() => setForm(f => ({ ...f, recurrence: opt.value }))}
-                        className={`px-2.5 py-1 rounded-sm text-xs font-medium transition-all ${
-                          form.recurrence === opt.value
-                            ? 'bg-[#4FC3C3] text-[#0A0A0A]'
-                            : 'bg-[#0A0A0A] border border-[#2A2A2A] text-[#A3A3A3] hover:text-white'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 pt-1">
+            <div className="flex gap-3 pt-4 border-t border-[#2A2A2A]">
               <button type="button" onClick={() => setModalOpen(false)}
                 className="flex-1 py-2 rounded-sm border border-[#2A2A2A] text-[#A3A3A3] text-sm font-medium hover:bg-[#2A2A2A] transition-all">
-                {t('common.cancel')}
+                Cancel
               </button>
-              <button type="submit" disabled={saving} data-testid="save-transaction-btn"
+              <button type="submit" disabled={saving}
                 className="flex-1 py-2 rounded-sm bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold hover:bg-[#3AA8A8] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                 {saving && <Loader2 size={13} className="animate-spin" />}
-                {t('common.save')}
+                Save Transaction
               </button>
             </div>
           </form>

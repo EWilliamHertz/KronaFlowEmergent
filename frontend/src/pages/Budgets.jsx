@@ -56,16 +56,18 @@ setBudgets(extractArray(res.data));
   };
 
   const handleSave = async (e) => {
-    const config = { headers: { 'Authorization': `Bearer ${token}` } };
     e.preventDefault();
     setSaving(true);
     try {
+      const token = localStorage.getItem('session_token'); // Fetch token inside
+      const config = { headers: { 'Authorization': `Bearer ${token}` } };
       const payload = { ...form, allocated_amount: parseFloat(form.allocated_amount), month, year };
+      
       if (editing) {
-        await axios.put(`${API}/budgets/${editing.id}`, payload);
+        await axios.put(`${API}/budgets/${editing.id}`, payload, config); // Use config
         toast.success('Budget updated');
       } else {
-        await axios.post(`${API}/budgets`, payload);
+        await axios.post(`${API}/budgets`, payload, config); // Use config
         toast.success('Budget created');
       }
       setModalOpen(false);
@@ -76,15 +78,15 @@ setBudgets(extractArray(res.data));
   };
 
   const handleDelete = async (id) => {
-    const config = { headers: { 'Authorization': `Bearer ${token}` } };
     if (!window.confirm('Delete this budget?')) return;
     try {
-      await axios.delete(`${API}/budgets/${id}`);
+      const token = localStorage.getItem('session_token'); // Fetch token inside
+      const config = { headers: { 'Authorization': `Bearer ${token}` } };
+      await axios.delete(`${API}/budgets/${id}`, config); // Use config
       toast.success('Budget deleted');
       fetchBudgets();
     } catch { toast.error('Failed to delete'); }
   };
-
   const prevMonth = () => {
     if (month === 1) { setMonth(12); setYear(y => y - 1); }
     else setMonth(m => m - 1);

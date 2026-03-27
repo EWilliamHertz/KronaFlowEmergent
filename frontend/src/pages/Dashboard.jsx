@@ -57,11 +57,21 @@ useEffect(() => {
     .finally(() => setLoading(false));
 }, []);
 
-const token = localStorage.getItem('session_token');
-const res = await axios.post(`${API}/ai/insights`, 
-  { context: aiQuestion || null },
-  { headers: { 'Authorization': `Bearer ${token}` } } // Add this line
-);
+const getAiInsights = async () => {
+    setAiLoading(true);
+    try {
+      const token = localStorage.getItem('session_token');
+      const res = await axios.post(`${API}/ai/insights`, 
+        { context: aiQuestion || null },
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      setAiInsights(res.data.insights);
+    } catch {
+      toast.error('AI insights unavailable. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   if (loading) {
     return (

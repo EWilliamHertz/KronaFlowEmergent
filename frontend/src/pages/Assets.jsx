@@ -59,17 +59,20 @@ setAssets(extractArray(res.data));
     e.preventDefault();
     setSaving(true);
     try {
+      const token = localStorage.getItem('session_token'); // Add this
+      const config = { headers: { 'Authorization': `Bearer ${token}` } }; // Add this
       const payload = {
         ...form,
         current_value: parseFloat(form.current_value),
         purchase_value: form.purchase_value ? parseFloat(form.purchase_value) : null,
         quantity: form.quantity ? parseFloat(form.quantity) : null,
       };
+      
       if (editing) {
-        await axios.put(`${API}/assets/${editing.id}`, payload);
+        await axios.put(`${API}/assets/${editing.id}`, payload, config); // Add config
         toast.success('Asset updated');
       } else {
-        await axios.post(`${API}/assets`, payload);
+        await axios.post(`${API}/assets`, payload, config); // Add config
         toast.success('Asset added');
       }
       setModalOpen(false);

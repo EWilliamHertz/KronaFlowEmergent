@@ -875,7 +875,30 @@ async def delete_inventory_item(item_id: str, user: User = Depends(current_activ
     return {"message": "Deleted"}
 
 # --- REPORTS ---
+from sqlalchemy import text # Make sure 'text' is imported from sqlalchemy at the top!
 
+@api_router.get("/check-db")
+async def check_database_schema(session: AsyncSession = Depends(get_async_session)):
+    try:
+        # Check tables that exist
+        tables_res = await session.execute(text(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+        ))
+        tables = [row[0] for row in tables_res.fetchall()]
+
+        # Check columns in transactions
+        cols_res = await session.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'transactions'"
+        ))
+        txn_columns = [row[0] for row in cols_res.fetchall()]
+
+        return {
+            "existing_tables": tables,
+            "transactions_columns": txn_columns,
+            "missing_linked_debt_id": "linked_debt_id" not in txn_columns
+        }
+    except Exception as e:
+        return {"error": str(e)}
 @api_router.get("/reports/summary")
 async def get_report_summary(period: str = "all", user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     now = datetime.now(timezone.utc)

@@ -4,8 +4,8 @@ import axios from 'axios';
 const AuthContext = createContext(null);
 const API = '/api';
 
-// --- GLOBAL SECURITY INTERCEPTOR ---
-// This ensures EVERY request on EVERY page automatically includes your token!
+// --- THE MAGIC FIX: GLOBAL SECURITY INTERCEPTOR ---
+// This automatically attaches the token to EVERY request on EVERY page!
 axios.interceptors.request.use(config => {
   const token = localStorage.getItem('session_token');
   if (token) {

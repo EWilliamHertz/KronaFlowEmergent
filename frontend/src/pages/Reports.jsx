@@ -1,204 +1,223 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Loader2, BarChart2, Download } from 'lucide-react';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Loader2, BarChart3, TrendingUp, PieChart, Calendar } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { extractNestedArray } from '../utils/apiHelpers';
+import { toast } from 'sonner';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-
-const PERIODS = [
-  { value: 'all', label: 'All Time' },
-  { value: 'this_year', label: 'This Year' },
-  { value: 'this_month', label: 'This Month' },
-  { value: 'last_month', label: 'Last Month' },
-];
-
-const CATEGORY_COLORS = {
-  food: '#10B981', transport: '#3B82F6', housing: '#8B5CF6',
-  entertainment: '#F59E0B', healthcare: '#EF4444', shopping: '#EC4899',
-  utilities: '#06B6D4', education: '#14B8A6', salary: '#10B981',
-  freelance: '#4FC3C3', investment: '#8B5CF6', gift: '#F59E0B', other: '#6B7280'
-};
-
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-3 text-xs">
-      <p className="text-[#A3A3A3] mb-1">{label}</p>
-      {payload.map(p => (
-        <p key={p.name} style={{ color: p.color }} className="font-semibold tabular-nums">
-          {p.name}: {fmt(p.value)} SEK
-        </p>
-      ))}
-    </div>
-  );
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const CAT_COLORS = {
+  food: '#FF6B6B', transport: '#4ECDC4', housing: '#45B7D1', entertainment: '#FFA07A',
+  healthcare: '#98D8C8', shopping: '#F7DC6F', utilities: '#BB8FCE', education: '#85C1E2', other: '#D7DBDB'
 };
 
 export default function Reports() {
   const { t } = useLanguage();
-  const [period, setPeriod] = useState('all');
-  const [data, setData] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState('month');
 
-  const fetchReport = useCallback(async () => {
+  const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/reports/summary`, { params: { period } });
-      setData(res.data);
-    } catch {}
+      const res = await axios.get(`${API}/analytics`, { params: { period: dateRange } });
+      // Handle both direct analytics object and wrapped response
+      let data = res.data;
+      if (data.analytics) data = data.analytics;
+      setAnalytics(data || {});
+    } catch (err) { 
+      console.error('Failed to load analytics:', err);
+      toast.error('Failed to load analytics'); 
+      setAnalytics({});
+    }
     finally { setLoading(false); }
-  }, [period]);
+  }, [dateRange]);
 
-  useEffect(() => { fetchReport(); }, [fetchReport]);
+  useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
-  const periodLabel = PERIODS.find(p => p.value === period)?.label || '';
+  const data = analytics || {};
+  const byCategory = extractNestedArray(data, 'by_category');
+  const byMonth = extractNestedArray(data, 'by_month');
+  const topExpenses = extractNestedArray(data, 'top_expenses');
+  
+  const totalIncome = data.total_income || 0;
+  const totalExpenses = data.total_expenses || 0;
+  const netSavings = totalIncome - totalExpenses;
 
   return (
-    <div className="space-y-5" data-testid="reports-page">
+    <div className="space-y-6" data-testid="reports-page">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-black text-white tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
-          {t('nav.reports')}
+          {t('reports.title')}
         </h1>
-        <div className="flex items-center gap-3">
-          {/* Period selector */}
-          <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden">
-            {PERIODS.map(p => (
-              <button key={p.value} onClick={() => setPeriod(p.value)}
-                className={`px-3 py-1.5 text-xs font-semibold transition-all ${period === p.value ? 'bg-[#4FC3C3] text-[#0A0A0A]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-2 bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-1">
+          {['week', 'month', 'year'].map(range => (
+            <button key={range} onClick={() => setDateRange(range)}
+              className={`px-3 py-1.5 rounded-sm text-xs font-semibold capitalize transition-all ${
+                dateRange === range
+                  ? 'bg-[#4FC3C3] text-[#0A0A0A]'
+                  : 'text-[#A3A3A3] hover:text-white'
+              }`}
+            >
+              {range}
+            </button>
+          ))}
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-24">
-          <Loader2 size={24} className="animate-spin text-[#4FC3C3]" />
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[#6B6B6B] text-xs font-semibold uppercase">Total Income</p>
+            <TrendingUp size={16} className="text-[#10B981]" />
+          </div>
+          {loading ? (
+            <div className="skeleton h-8 rounded" />
+          ) : (
+            <p className="text-white font-black text-2xl tabular-nums">{fmt(totalIncome)} <span className="text-sm text-[#A3A3A3] font-normal">SEK</span></p>
+          )}
         </div>
-      ) : !data ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <BarChart2 size={36} className="text-[#2A2A2A]" />
-          <p className="text-[#6B6B6B] text-sm">No data available</p>
+
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[#6B6B6B] text-xs font-semibold uppercase">Total Expenses</p>
+            <BarChart3 size={16} className="text-[#EF4444]" />
+          </div>
+          {loading ? (
+            <div className="skeleton h-8 rounded" />
+          ) : (
+            <p className="text-white font-black text-2xl tabular-nums">{fmt(totalExpenses)} <span className="text-sm text-[#A3A3A3] font-normal">SEK</span></p>
+          )}
+        </div>
+
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[#6B6B6B] text-xs font-semibold uppercase">Net Savings</p>
+            <PieChart size={16} className="text-[#4FC3C3]" />
+          </div>
+          {loading ? (
+            <div className="skeleton h-8 rounded" />
+          ) : (
+            <p className={`font-black text-2xl tabular-nums ${netSavings >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+              {netSavings >= 0 ? '+' : ''}{fmt(netSavings)} <span className="text-sm text-[#A3A3A3] font-normal">SEK</span>
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Charts Section */}
+      {loading ? (
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-8 flex items-center justify-center gap-2">
+          <Loader2 className="animate-spin text-[#4FC3C3]" size={16} />
+          <span className="text-[#6B6B6B] text-sm">Loading analytics...</span>
         </div>
       ) : (
         <>
-          {/* P&L Summary */}
-          <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-white uppercase tracking-widest">Profit & Loss — {periodLabel}</h2>
-              <span className="text-xs text-[#6B6B6B]">{data.transaction_count} transactions</span>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-[#0A0A0A] rounded-sm p-4 border border-[#2A2A2A]">
-                <p className="text-xs font-bold uppercase tracking-widest text-[#10B981] mb-2">Total Revenue</p>
-                <p className="text-white font-black tabular-nums text-2xl">{fmt(data.total_income)}</p>
-                <p className="text-[#6B6B6B] text-xs mt-1">SEK</p>
-              </div>
-              <div className="bg-[#0A0A0A] rounded-sm p-4 border border-[#2A2A2A]">
-                <p className="text-xs font-bold uppercase tracking-widest text-[#F59E0B] mb-2">Total Expenses</p>
-                <p className="text-white font-black tabular-nums text-2xl">{fmt(data.total_expenses)}</p>
-                <p className="text-[#6B6B6B] text-xs mt-1">SEK</p>
-              </div>
-              <div className={`bg-[#0A0A0A] rounded-sm p-4 border ${data.net >= 0 ? 'border-[#10B981]/30' : 'border-[#EF4444]/30'}`}>
-                <p className={`text-xs font-bold uppercase tracking-widest mb-2 ${data.net >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>Net Result</p>
-                <p className={`font-black tabular-nums text-2xl ${data.net >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                  {data.net >= 0 ? '+' : ''}{fmt(data.net)}
-                </p>
-                <p className="text-[#6B6B6B] text-xs mt-1">SEK</p>
+          {/* Expenses by Category */}
+          {byCategory.length > 0 && (
+            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-6">
+              <h2 className="text-lg font-black text-white mb-5 tracking-tight">Expenses by Category</h2>
+              <div className="space-y-3" data-testid="category-breakdown">
+                {byCategory.map((cat, idx) => {
+                  const color = CAT_COLORS[cat.category] || '#D7DBDB';
+                  const pct = totalExpenses > 0 ? (cat.amount / totalExpenses) * 100 : 0;
+                  return (
+                    <div key={idx}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm text-white capitalize font-semibold">{cat.category}</span>
+                        <span className="text-sm text-[#A3A3A3] font-bold tabular-nums">{fmt(cat.amount)} ({pct.toFixed(0)}%)</span>
+                      </div>
+                      <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Monthly Trend Chart */}
-          <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
-            <h3 className="text-sm font-bold text-white mb-4">12-Month Trend</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={data.trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="rIncome" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4FC3C3" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#4FC3C3" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="rExpense" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="income" name="Income" stroke="#4FC3C3" fill="url(#rIncome)" strokeWidth={2} dot={false} />
-                <Area type="monotone" dataKey="expenses" name="Expenses" stroke="#F59E0B" fill="url(#rExpense)" strokeWidth={2} dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Category Breakdown */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Table */}
-            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-[#2A2A2A]">
-                <h3 className="text-sm font-bold text-white">Category Breakdown</h3>
-              </div>
-              <div className="overflow-auto max-h-72">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-[#2A2A2A]">
-                      {['Category','Income','Expenses','Count'].map(h => (
-                        <th key={h} className="px-4 py-2 text-left text-xs font-bold uppercase tracking-widest text-[#6B6B6B]">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.by_category.map(cat => (
-                      <tr key={cat.category} className="border-b border-[#2A2A2A] hover:bg-[#4FC3C3]/5">
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full" style={{ background: CATEGORY_COLORS[cat.category] || '#6B7280' }} />
-                            <span className="text-white text-sm capitalize">{cat.category}</span>
+          {/* Monthly Trend */}
+          {byMonth.length > 0 && (
+            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-6">
+              <h2 className="text-lg font-black text-white mb-5 tracking-tight">Monthly Trend</h2>
+              <div className="flex items-end justify-between gap-2 h-48" data-testid="monthly-trend">
+                {byMonth.map((month, idx) => {
+                  const maxValue = Math.max(...byMonth.map(m => Math.max(m.income || 0, m.expenses || 0)));
+                  const incomeHeight = maxValue > 0 ? ((month.income || 0) / maxValue) * 100 : 0;
+                  const expenseHeight = maxValue > 0 ? ((month.expenses || 0) / maxValue) * 100 : 0;
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center gap-2">
+                      <div className="w-full flex items-end justify-center gap-1 h-40">
+                        {month.income > 0 && (
+                          <div className="flex-1 bg-[#10B981]/60 rounded-t-sm transition-all hover:bg-[#10B981] group" 
+                            style={{ height: `${incomeHeight}%` }} title={`Income: ${fmt(month.income)}`}>
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[#10B981] text-xs font-bold absolute -mt-5">
+                              {fmt(month.income)}
+                            </div>
                           </div>
-                        </td>
-                        <td className="px-4 py-2.5 text-[#10B981] text-sm tabular-nums">{fmt(cat.income)}</td>
-                        <td className="px-4 py-2.5 text-[#F59E0B] text-sm tabular-nums">{fmt(cat.expense)}</td>
-                        <td className="px-4 py-2.5 text-[#6B6B6B] text-sm">{cat.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        )}
+                        {month.expenses > 0 && (
+                          <div className="flex-1 bg-[#EF4444]/60 rounded-t-sm transition-all hover:bg-[#EF4444] group" 
+                            style={{ height: `${expenseHeight}%` }} title={`Expenses: ${fmt(month.expenses)}`}>
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[#EF4444] text-xs font-bold absolute -mt-5">
+                              {fmt(month.expenses)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-xs text-[#6B6B6B] font-semibold">{month.month.substr(0, 3)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 flex items-center gap-4 justify-center text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-[#10B981] rounded-sm" />
+                  <span className="text-[#A3A3A3]">Income</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 bg-[#EF4444] rounded-sm" />
+                  <span className="text-[#A3A3A3]">Expenses</span>
+                </div>
               </div>
             </div>
+          )}
 
-            {/* Bar chart */}
-            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5">
-              <h3 className="text-sm font-bold text-white mb-4">Expenses by Category</h3>
-              {data.by_category.some(c => c.expense > 0) ? (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={data.by_category.filter(c => c.expense > 0)} layout="vertical" margin={{ left: 10, right: 20 }}>
-                    <XAxis type="number" tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis type="category" dataKey="category" tick={{ fill: '#A3A3A3', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
-                    <Tooltip contentStyle={{ background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: '2px', fontSize: 11 }}
-                      formatter={(v) => [`${fmt(v)} SEK`, 'Expense']} />
-                    <Bar dataKey="expense" radius={[0,2,2,0]}>
-                      {data.by_category.filter(c => c.expense > 0).map((entry, i) => (
-                        <rect key={i} fill={CATEGORY_COLORS[entry.category] || '#6B7280'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-48">
-                  <p className="text-[#6B6B6B] text-sm">No expense data for this period</p>
-                </div>
-              )}
+          {/* Top Expenses */}
+          {topExpenses.length > 0 && (
+            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-6">
+              <h2 className="text-lg font-black text-white mb-4 tracking-tight">Top Transactions</h2>
+              <div className="space-y-2" data-testid="top-expenses">
+                {topExpenses.slice(0, 10).map((exp, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-[#0A0A0A] rounded-sm hover:bg-[#4FC3C3]/5 transition-colors">
+                    <div className="flex-1">
+                      <p className="text-white text-sm font-semibold">{exp.description}</p>
+                      <p className="text-[#6B6B6B] text-xs">{exp.date ? new Date(exp.date).toLocaleDateString('sv-SE') : 'N/A'}</p>
+                    </div>
+                    <p className="text-white font-bold tabular-nums">
+                      {exp.type === 'income' ? '+' : '-'}{fmt(exp.amount)} SEK
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </>
+      )}
+
+      {/* Empty state */}
+      {!loading && !byCategory.length && !byMonth.length && !topExpenses.length && (
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-12 flex flex-col items-center gap-3 text-center">
+          <BarChart3 size={48} className="text-[#2A2A2A]" />
+          <p className="text-[#6B6B6B]">{t('reports.noData')}</p>
+          <p className="text-[#6B6B6B] text-xs">Start adding transactions to see analytics</p>
+        </div>
       )}
     </div>
   );

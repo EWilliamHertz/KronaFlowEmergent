@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Plus, Pencil, Trash2, Loader2, TrendingUp } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
+import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -38,8 +39,11 @@ export default function Assets() {
     try {
       const params = activeType !== 'all' ? { type: activeType } : {};
       const res = await axios.get(`${API}/assets`, { params });
-      setAssets(res.data);
-    } catch { toast.error('Failed to load assets'); }
+      setAssets(extractArray(res.data, 'assets'));
+    } catch (err) { 
+      console.error('Failed to load assets:', err);
+      toast.error('Failed to load assets'); 
+    }
     finally { setLoading(false); }
   }, [activeType]);
 
@@ -85,8 +89,9 @@ export default function Assets() {
     } catch { toast.error('Failed to delete'); }
   };
 
-  const totalValue = assets.reduce((s, a) => s + a.current_value, 0);
-  const totalGain = assets.reduce((s, a) => s + (a.gain_loss || 0), 0);
+  const safeArray = Array.isArray(assets) ? assets : [];
+  const totalValue = safeArray.reduce((s, a) => s + (a.current_value || 0), 0);
+  const totalGain = safeArray.reduce((s, a) => s + (a.gain_loss || 0), 0);
 
   return (
     <div className="space-y-5" data-testid="assets-page">
@@ -117,7 +122,7 @@ export default function Assets() {
         </div>
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4">
           <p className="text-[#6B6B6B] text-xs mb-1">Assets Tracked</p>
-          <p className="text-white font-bold text-xl">{assets.length}</p>
+          <p className="text-white font-bold text-xl">{safeArray.length}</p>
         </div>
       </div>
 
@@ -141,7 +146,7 @@ export default function Assets() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1,2,3].map(i => <div key={i} className="skeleton h-40 rounded-sm" />)}
         </div>
-      ) : assets.length === 0 ? (
+      ) : safeArray.length === 0 ? (
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-12 flex flex-col items-center gap-3">
           <TrendingUp size={36} className="text-[#2A2A2A]" />
           <p className="text-[#6B6B6B] text-sm">{t('assets.noAssets')}</p>
@@ -149,7 +154,7 @@ export default function Assets() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="asset-cards">
-          {assets.map(a => {
+          {safeArray.map(a => {
             const color = TYPE_COLORS[a.type] || '#6B7280';
             return (
               <div key={a.id} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group"

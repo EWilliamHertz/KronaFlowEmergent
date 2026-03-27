@@ -11,10 +11,11 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # --- SQLALCHEMY & FASTAPI-USERS IMPORTS ---
-from sqlalchemy import Column, String, Float, Integer, Boolean, ForeignKey, JSON, Uuid
+from sqlalchemy import Column, String, Float, Integer, Boolean, ForeignKey, JSON, Uuid, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.future import select
+from sqlalchemy.pool import NullPool
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, schemas, models
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
@@ -34,7 +35,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- SAFE DICT HELPER ---
-# This safely removes the SQLAlchemy internal state so FastAPI can convert it to JSON!
 def to_dict(obj):
     if not obj:
         return None
@@ -44,7 +44,13 @@ def to_dict(obj):
 # 1. SQLALCHEMY DATABASE & MODELS
 # ==========================================
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Optimized for Serverless (Vercel + Neon)
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=False,
+    pool_pre_ping=True,  # Checks if connection is alive before using it
+    poolclass=NullPool   # Disables pooling; vital for serverless environments
+)
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 class Base(DeclarativeBase):
@@ -71,7 +77,8 @@ class Transaction(Base):
     year = Column(Integer, nullable=False)
     recurring = Column(Boolean, default=False)
     recurrence = Column(String, nullable=True)
-linked_debt_id = Column(String, nullable=True)
+    linked_debt_id = Column(String, nullable=True) # Fixed Indentation
+
 class Budget(Base):
     __tablename__ = "budgets"
     id = Column(String, primary_key=True, default=lambda: f"bud_{uuid.uuid4().hex[:12]}")
@@ -81,12 +88,14 @@ class Budget(Base):
     currency = Column(String, default="SEK")
     month = Column(Integer, nullable=False)
     year = Column(Integer, nullable=False)
+
 class Category(Base):
     __tablename__ = "categories"
     id = Column(String, primary_key=True, default=lambda: f"cat_{uuid.uuid4().hex[:12]}")
     user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
     name = Column(String, nullable=False)
-    type = Column(String, nullable=False) # e.g., 'income' or 'expense'
+    type = Column(String, nullable=False)
+
 class Asset(Base):
     __tablename__ = "assets"
     id = Column(String, primary_key=True, default=lambda: f"ast_{uuid.uuid4().hex[:12]}")
@@ -166,7 +175,7 @@ async def get_user_manager(user_db=Depends(get_user_db)):
 bearer_transport = BearerTransport(tokenUrl="api/auth/jwt/login")
 
 def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(secret=JWT_SECRET, lifetime_seconds=7 * 24 * 3600) # 7 days
+    return JWTStrategy(secret=JWT_SECRET, lifetime_seconds=7 * 24 * 3600)
 
 auth_backend = AuthenticationBackend(
     name="jwt", transport=bearer_transport, get_strategy=get_jwt_strategy,
@@ -175,7 +184,6 @@ auth_backend = AuthenticationBackend(
 fastapi_users = FastAPIUsers[User, uuid.UUID](get_user_manager, [auth_backend])
 current_active_user = fastapi_users.current_user(active=True)
 
-# Auth Pydantic Schemas
 class UserRead(schemas.BaseUser[uuid.UUID]):
     name: Optional[str] = None
     organization: Optional[str] = None
@@ -205,9 +213,11 @@ class TransactionCreate(BaseModel):
     currency: str = "SEK"
     recurring: bool = False
     recurrence: Optional[str] = None
+
 class CategoryCreate(BaseModel):
     name: str
     type: str
+
 class TransactionBulkCreate(BaseModel):
     transactions: List[TransactionCreate]
 
@@ -238,10 +248,11 @@ class DebtCreate(BaseModel):
 
 class DebtTransactionCreate(BaseModel):
     amount: float
-    action: str  # "payment" (reduces debt) or "increase" (adds to debt)
+    action: str
     date: str
     note: Optional[str] = None
     currency: str = "SEK"
+
 class UpdateProfileRequest(BaseModel):
     name: Optional[str] = None
     organization: Optional[str] = None
@@ -287,13 +298,21 @@ class AIInsightRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-create tables in NeonDB on startup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
 
 app = FastAPI(lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- CATEGORIES ---
 
 @api_router.get("/categories")
@@ -303,30 +322,19 @@ async def get_categories(user: User = Depends(current_active_user), session: Asy
 
 @api_router.post("/categories")
 async def create_category(data: CategoryCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    # Check if category already exists to avoid duplicates
     existing = await session.execute(
         select(Category).where(Category.user_id == user.id, Category.name == data.name, Category.type == data.type)
     )
     if existing.scalars().first():
         raise HTTPException(status_code=400, detail="Category already exists")
-        
     new_cat = Category(user_id=user.id, name=data.name, type=data.type)
     session.add(new_cat)
     await session.commit()
     await session.refresh(new_cat)
     return to_dict(new_cat)
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# Standard Auth Routes auto-generated by FastAPI-Users
-app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/api/auth/jwt", tags=["auth"])
-app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix="/api/auth", tags=["auth"])
-app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/api/users", tags=["users"])
+# --- DB INIT ---
+
 @api_router.get("/init-db")
 async def initialize_database():
     try:
@@ -349,22 +357,17 @@ async def get_transactions(
     query = select(Transaction).where(Transaction.user_id == user.id)
     if type: query = query.where(Transaction.type == type)
     if category: query = query.where(Transaction.category == category)
-    
     result = await session.execute(query)
     txns = [to_dict(t) for t in result.scalars().all()]
-    
     if search:
         sl = search.lower()
         txns = [t for t in txns if sl in (t.get("description") or "").lower() or sl in (t.get("party") or "").lower()]
-        
     return sorted(txns, key=lambda x: x.get("date", ""), reverse=True)
-
 
 @api_router.post("/transactions")
 async def create_transaction(data: TransactionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     try: date_obj = datetime.strptime(data.date[:10], "%Y-%m-%d")
     except: date_obj = datetime.now(timezone.utc)
-    
     new_txn = Transaction(
         user_id=user.id, type=data.type, amount=data.amount, currency=data.currency,
         category=data.category, description=data.description, date=data.date[:10],
@@ -381,10 +384,8 @@ async def update_transaction(txn_id: str, data: TransactionCreate, user: User = 
     result = await session.execute(select(Transaction).where(Transaction.id == txn_id, Transaction.user_id == user.id))
     txn = result.scalars().first()
     if not txn: raise HTTPException(status_code=404, detail="Transaction not found")
-    
     try: date_obj = datetime.strptime(data.date[:10], "%Y-%m-%d")
     except: date_obj = datetime.now(timezone.utc)
-
     txn.type = data.type
     txn.amount = data.amount
     txn.currency = data.currency
@@ -397,7 +398,6 @@ async def update_transaction(txn_id: str, data: TransactionCreate, user: User = 
     await session.commit()
     await session.refresh(txn)
     return to_dict(txn)
-
 
 @api_router.delete("/transactions/{txn_id}")
 async def delete_transaction(txn_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -424,7 +424,6 @@ async def bulk_import_transactions(data: TransactionBulkCreate, user: User = Dep
     for txn_data in data.transactions:
         try: date_obj = datetime.strptime(txn_data.date[:10], "%Y-%m-%d")
         except: date_obj = datetime.now(timezone.utc)
-        
         new_txn = Transaction(
             user_id=user.id, type=txn_data.type, amount=abs(txn_data.amount), currency=txn_data.currency,
             category=txn_data.category, description=txn_data.description, date=txn_data.date[:10],
@@ -439,23 +438,19 @@ async def bulk_import_transactions(data: TransactionBulkCreate, user: User = Dep
 async def get_transaction_stats(month: Optional[int] = None, year: Optional[int] = None, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     result = await session.execute(select(Transaction).where(Transaction.user_id == user.id))
     all_txns = [to_dict(t) for t in result.scalars().all()]
-    
     if month is not None and year is not None:
         period_txns = [t for t in all_txns if t.get("month") == month and t.get("year") == year]
     elif year is not None:
         period_txns = [t for t in all_txns if t.get("year") == year]
     else:
         period_txns = all_txns
-        
     total_income = sum(t["amount"] for t in period_txns if t["type"] == "income")
     total_expenses = sum(t["amount"] for t in period_txns if t["type"] == "expense")
-    
     category_stats = {}
     for t in period_txns:
         cat = t["category"]
         if cat not in category_stats: category_stats[cat] = {"income": 0, "expense": 0}
         category_stats[cat][t["type"]] += t["amount"]
-        
     by_category = [{"category": k, **v} for k, v in category_stats.items()]
     return {
         "total_income": total_income, "total_expenses": total_expenses,
@@ -470,13 +465,10 @@ async def get_budgets(month: Optional[int] = None, year: Optional[int] = None, u
     now = datetime.now(timezone.utc)
     m = month or now.month
     y = year or now.year
-    
     budgets_res = await session.execute(select(Budget).where(Budget.user_id == user.id, Budget.month == m, Budget.year == y))
     txns_res = await session.execute(select(Transaction).where(Transaction.user_id == user.id, Transaction.month == m, Transaction.year == y, Transaction.type == "expense"))
-    
     budgets = [to_dict(b) for b in budgets_res.scalars().all()]
     txns = [to_dict(t) for t in txns_res.scalars().all()]
-    
     for budget in budgets:
         spent = sum(t["amount"] for t in txns if t["category"] == budget["category"])
         budget["spent"] = spent
@@ -487,7 +479,6 @@ async def get_budgets(month: Optional[int] = None, year: Optional[int] = None, u
 async def create_budget(data: BudgetCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     existing = await session.execute(select(Budget).where(Budget.user_id == user.id, Budget.category == data.category, Budget.month == data.month, Budget.year == data.year))
     if existing.scalars().first(): raise HTTPException(status_code=400, detail="Budget already exists for this category and period")
-    
     new_budget = Budget(user_id=user.id, **data.model_dump())
     session.add(new_budget)
     await session.commit()
@@ -499,7 +490,6 @@ async def update_budget(budget_id: str, data: BudgetCreate, user: User = Depends
     result = await session.execute(select(Budget).where(Budget.id == budget_id, Budget.user_id == user.id))
     budget = result.scalars().first()
     if not budget: raise HTTPException(status_code=404, detail="Budget not found")
-    
     budget.allocated_amount = data.allocated_amount
     budget.category = data.category
     await session.commit()
@@ -521,10 +511,8 @@ async def delete_budget(budget_id: str, user: User = Depends(current_active_user
 async def get_assets(type: Optional[str] = None, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     query = select(Asset).where(Asset.user_id == user.id)
     if type: query = query.where(Asset.type == type)
-    
     result = await session.execute(query)
     assets = [to_dict(a) for a in result.scalars().all()]
-    
     for asset in assets:
         pv = asset.get("purchase_value") or 0
         cv = asset.get("current_value") or 0
@@ -548,7 +536,6 @@ async def update_asset(asset_id: str, data: AssetCreate, user: User = Depends(cu
     result = await session.execute(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
     asset = result.scalars().first()
     if not asset: raise HTTPException(status_code=404, detail="Asset not found")
-    
     for key, value in data.model_dump().items():
         if value is not None: setattr(asset, key, value)
     await session.commit()
@@ -584,7 +571,6 @@ async def update_debt(debt_id: str, data: DebtCreate, user: User = Depends(curre
     result = await session.execute(select(Debt).where(Debt.id == debt_id, Debt.user_id == user.id))
     debt = result.scalars().first()
     if not debt: raise HTTPException(status_code=404, detail="Debt not found")
-    
     for key, value in data.model_dump().items():
         setattr(debt, key, value)
     await session.commit()
@@ -602,66 +588,45 @@ async def delete_debt(debt_id: str, user: User = Depends(current_active_user), s
 
 @api_router.get("/debts/{debt_id}")
 async def get_single_debt(debt_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    # 1. Fetch the specific debt
     result = await session.execute(select(Debt).where(Debt.id == debt_id, Debt.user_id == user.id))
     debt = result.scalars().first()
     if not debt: raise HTTPException(status_code=404, detail="Debt not found")
-    
-    # 2. Fetch all global transactions linked to this debt
     txn_result = await session.execute(
         select(Transaction)
         .where(Transaction.linked_debt_id == debt_id, Transaction.user_id == user.id)
         .order_by(Transaction.date.desc())
     )
     linked_txns = [to_dict(t) for t in txn_result.scalars().all()]
-    
     debt_dict = to_dict(debt)
-    debt_dict["history"] = linked_txns # Attach full transaction history to the response
+    debt_dict["history"] = linked_txns
     return debt_dict
 
 @api_router.post("/debts/{debt_id}/transaction")
 async def record_debt_transaction(debt_id: str, data: DebtTransactionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    # 1. Find the debt
     result = await session.execute(select(Debt).where(Debt.id == debt_id, Debt.user_id == user.id))
     debt = result.scalars().first()
     if not debt: raise HTTPException(status_code=404, detail="Debt not found")
-    
     try: date_obj = datetime.strptime(data.date[:10], "%Y-%m-%d")
     except: date_obj = datetime.now(timezone.utc)
-
-    # 2. Determine the math based on the action
     if data.action == "payment":
-        # Paying a debt is an EXPENSE. It decreases your remaining debt balance.
         debt.remaining_amount = max(0, debt.remaining_amount - data.amount)
         txn_type = "expense"
         txn_category = "Debt Repayment"
         desc = data.note or f"Payment to {debt.name}"
     elif data.action == "increase":
-        # Taking more loan acts like INCOME to your cashflow, but increases debt balance.
         debt.remaining_amount += data.amount
-        debt.total_amount += data.amount # Increase the ceiling of the loan
+        debt.total_amount += data.amount
         txn_type = "income"
         txn_category = "Loan Disbursement"
         desc = data.note or f"Additional funds from {debt.name}"
     else:
         raise HTTPException(status_code=400, detail="Action must be 'payment' or 'increase'")
-
-    # 3. Create the Global Transaction
     new_txn = Transaction(
-        user_id=user.id,
-        type=txn_type,
-        amount=data.amount,
-        currency=data.currency,
-        category=txn_category,
-        description=desc,
-        date=data.date[:10],
-        party=debt.name,
-        month=date_obj.month,
-        year=date_obj.year,
-        linked_debt_id=debt.id  # Link it directly to the debt!
+        user_id=user.id, type=txn_type, amount=data.amount, currency=data.currency,
+        category=txn_category, description=desc, date=data.date[:10],
+        party=debt.name, month=date_obj.month, year=date_obj.year, linked_debt_id=debt.id
     )
     session.add(new_txn)
-    
     await session.commit()
     await session.refresh(debt)
     return to_dict(debt)
@@ -672,24 +637,18 @@ async def record_debt_transaction(debt_id: str, data: DebtTransactionCreate, use
 async def get_dashboard_stats(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     now = datetime.now(timezone.utc)
     current_month, current_year = now.month, now.year
-
     txns_res = await session.execute(select(Transaction).where(Transaction.user_id == user.id))
     all_txns = [to_dict(t) for t in txns_res.scalars().all()]
-    
     assets_res = await session.execute(select(Asset).where(Asset.user_id == user.id))
     total_asset_value = sum(a.current_value for a in assets_res.scalars().all())
-    
     debts_res = await session.execute(select(Debt).where(Debt.user_id == user.id))
     total_debt = sum(d.remaining_amount for d in debts_res.scalars().all())
-
     monthly_txns = [t for t in all_txns if t.get("month") == current_month and t.get("year") == current_year]
     monthly_income = sum(t["amount"] for t in monthly_txns if t["type"] == "income")
     monthly_expenses = sum(t["amount"] for t in monthly_txns if t["type"] == "expense")
     total_income_all = sum(t["amount"] for t in all_txns if t["type"] == "income")
     total_expense_all = sum(t["amount"] for t in all_txns if t["type"] == "expense")
-
     recent_txns = sorted(all_txns, key=lambda x: x.get("date", ""), reverse=True)[:5]
-    
     trend = []
     for i in range(5, -1, -1):
         m = current_month - i; y = current_year
@@ -698,7 +657,6 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
         inc = sum(t["amount"] for t in month_txns if t["type"] == "income")
         exp = sum(t["amount"] for t in month_txns if t["type"] == "expense")
         trend.append({"month": datetime(y, m, 1).strftime("%b"), "income": inc, "expenses": exp})
-
     budgets_res = await session.execute(select(Budget).where(Budget.user_id == user.id, Budget.month == current_month, Budget.year == current_year))
     budget_overview = []
     for budget in budgets_res.scalars().all():
@@ -707,7 +665,6 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
             "category": budget.category, "allocated": budget.allocated_amount, "spent": spent,
             "percentage": round((spent / budget.allocated_amount * 100) if budget.allocated_amount > 0 else 0, 1)
         })
-
     return {
         "total_balance": total_income_all - total_expense_all,
         "monthly_income": monthly_income, "monthly_expenses": monthly_expenses,
@@ -719,26 +676,17 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
 @api_router.post("/ai/insights")
 async def get_ai_insights(data: AIInsightRequest, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     now = datetime.now(timezone.utc)
-    
     txns_res = await session.execute(select(Transaction).where(Transaction.user_id == user.id, Transaction.month == now.month))
     monthly_txns = [to_dict(t) for t in txns_res.scalars().all()]
-    
     monthly_income = sum(t["amount"] for t in monthly_txns if t["type"] == "income")
     monthly_expenses = sum(t["amount"] for t in monthly_txns if t["type"] == "expense")
-
-    financial_summary = f"""
-    Financial Summary for {user.name or 'User'} ({now.strftime('%B %Y')}):
-    - Monthly Income: {monthly_income:,.0f} SEK
-    - Monthly Expenses: {monthly_expenses:,.0f} SEK
-    - Net This Month: {monthly_income - monthly_expenses:,.0f} SEK
-    """
-    if data.context: financial_summary += f"\n\nUser Question: {data.context}"
-
+    financial_summary = f"Summary for {user.name or 'User'} ({now.strftime('%B %Y')}): Income {monthly_income} SEK, Expense {monthly_expenses} SEK."
+    if data.context: financial_summary += f"\nUser Question: {data.context}"
     client = AsyncOpenAI(api_key=EMERGENT_LLM_KEY)
     response = await client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are KronaFlow's AI financial advisor. Analyze data, be specific. Keep under 250 words."},
+            {"role": "system", "content": "Analyze data as an AI advisor. Keep under 250 words."},
             {"role": "user", "content": financial_summary}
         ]
     )
@@ -748,14 +696,10 @@ async def get_ai_insights(data: AIInsightRequest, user: User = Depends(current_a
 
 @api_router.put("/profile")
 async def update_profile(data: UpdateProfileRequest, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    # Need to refetch user from session to update it properly via SQLAlchemy
     result = await session.execute(select(User).where(User.id == user.id))
     db_user = result.scalars().first()
-    
     for key, value in data.model_dump().items():
-        if value is not None:
-            setattr(db_user, key, value)
-            
+        if value is not None: setattr(db_user, key, value)
     await session.commit()
     await session.refresh(db_user)
     return {
@@ -769,38 +713,26 @@ async def update_profile(data: UpdateProfileRequest, user: User = Depends(curren
 async def get_invoices(status: Optional[str] = None, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     query = select(Invoice).where(Invoice.user_id == user.id)
     if status: query = query.where(Invoice.status == status)
-    
     result = await session.execute(query)
     invoices = [to_dict(inv) for inv in result.scalars().all()]
-    
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for inv in invoices:
         if inv.get("status") == "sent" and inv.get("due_date", "9999") < today:
             inv["status"] = "overdue"
-            
     return sorted(invoices, key=lambda x: x.get("issue_date", ""), reverse=True)
 
 @api_router.post("/invoices")
 async def create_invoice(data: InvoiceCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     subtotal = sum(item.quantity * item.unit_price for item in data.items)
     vat_total = sum(item.quantity * item.unit_price * item.vat_pct / 100 for item in data.items)
-    
     inv_num = f"INV-{datetime.now(timezone.utc).strftime('%Y%m')}-{uuid.uuid4().hex[:4].upper()}"
     new_invoice = Invoice(
-        user_id=user.id,
-        invoice_number=inv_num,
-        client_name=data.client_name,
-        client_email=data.client_email,
-        client_address=data.client_address,
-        items=[item.model_dump() for item in data.items],
-        issue_date=data.issue_date,
-        due_date=data.due_date,
-        currency=data.currency,
-        notes=data.notes,
-        subtotal=round(subtotal, 2),
-        vat_total=round(vat_total, 2),
-        total=round(subtotal + vat_total, 2),
-        status="draft"
+        user_id=user.id, invoice_number=inv_num, client_name=data.client_name,
+        client_email=data.client_email, client_address=data.client_address,
+        items=[item.model_dump() for item in data.items], issue_date=data.issue_date,
+        due_date=data.due_date, currency=data.currency, notes=data.notes,
+        subtotal=round(subtotal, 2), vat_total=round(vat_total, 2),
+        total=round(subtotal + vat_total, 2), status="draft"
     )
     session.add(new_invoice)
     await session.commit()
@@ -811,11 +743,9 @@ async def create_invoice(data: InvoiceCreate, user: User = Depends(current_activ
 async def update_invoice_status(invoice_id: str, data: InvoiceStatusUpdate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     allowed = ["draft", "sent", "paid", "overdue"]
     if data.status not in allowed: raise HTTPException(status_code=400, detail="Invalid status")
-    
     result = await session.execute(select(Invoice).where(Invoice.id == invoice_id, Invoice.user_id == user.id))
     invoice = result.scalars().first()
     if not invoice: raise HTTPException(status_code=404, detail="Invoice not found")
-    
     invoice.status = data.status
     await session.commit()
     await session.refresh(invoice)
@@ -826,7 +756,6 @@ async def delete_invoice(invoice_id: str, user: User = Depends(current_active_us
     result = await session.execute(select(Invoice).where(Invoice.id == invoice_id, Invoice.user_id == user.id))
     invoice = result.scalars().first()
     if not invoice: raise HTTPException(status_code=404, detail="Invoice not found")
-    
     await session.delete(invoice)
     await session.commit()
     return {"message": "Deleted"}
@@ -837,7 +766,6 @@ async def delete_invoice(invoice_id: str, user: User = Depends(current_active_us
 async def get_inventory(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     result = await session.execute(select(InventoryItem).where(InventoryItem.user_id == user.id))
     items = [to_dict(item) for item in result.scalars().all()]
-    
     for item in items:
         item["total_value"] = round(item.get("quantity", 0) * item.get("buy_price", 0), 2)
         item["low_stock"] = item.get("quantity", 0) <= item.get("low_stock_threshold", 5)
@@ -856,10 +784,8 @@ async def update_inventory_item(item_id: str, data: InventoryItemCreate, user: U
     result = await session.execute(select(InventoryItem).where(InventoryItem.id == item_id, InventoryItem.user_id == user.id))
     item = result.scalars().first()
     if not item: raise HTTPException(status_code=404, detail="Item not found")
-    
     for key, value in data.model_dump().items():
         if value is not None: setattr(item, key, value)
-        
     await session.commit()
     await session.refresh(item)
     return to_dict(item)
@@ -869,82 +795,53 @@ async def delete_inventory_item(item_id: str, user: User = Depends(current_activ
     result = await session.execute(select(InventoryItem).where(InventoryItem.id == item_id, InventoryItem.user_id == user.id))
     item = result.scalars().first()
     if not item: raise HTTPException(status_code=404, detail="Item not found")
-    
     await session.delete(item)
     await session.commit()
     return {"message": "Deleted"}
 
 # --- REPORTS ---
-from sqlalchemy import text # Make sure 'text' is imported from sqlalchemy at the top!
 
 @api_router.get("/check-db")
 async def check_database_schema(session: AsyncSession = Depends(get_async_session)):
     try:
-        # Check tables that exist
-        tables_res = await session.execute(text(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
-        ))
+        tables_res = await session.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"))
         tables = [row[0] for row in tables_res.fetchall()]
-
-        # Check columns in transactions
-        cols_res = await session.execute(text(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = 'transactions'"
-        ))
+        cols_res = await session.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'transactions'"))
         txn_columns = [row[0] for row in cols_res.fetchall()]
+        return {"existing_tables": tables, "transactions_columns": txn_columns, "missing_linked_debt_id": "linked_debt_id" not in txn_columns}
+    except Exception as e: return {"error": str(e)}
 
-        return {
-            "existing_tables": tables,
-            "transactions_columns": txn_columns,
-            "missing_linked_debt_id": "linked_debt_id" not in txn_columns
-        }
-    except Exception as e:
-        return {"error": str(e)}
 @api_router.get("/reports/summary")
 async def get_report_summary(period: str = "all", user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     now = datetime.now(timezone.utc)
-    
     result = await session.execute(select(Transaction).where(Transaction.user_id == user.id))
     all_txns = [to_dict(t) for t in result.scalars().all()]
-
-    if period == "this_month":
-        txns = [t for t in all_txns if t.get("month") == now.month and t.get("year") == now.year]
+    if period == "this_month": txns = [t for t in all_txns if t.get("month") == now.month and t.get("year") == now.year]
     elif period == "last_month":
         lm = now.month - 1 or 12
         ly = now.year if now.month > 1 else now.year - 1
         txns = [t for t in all_txns if t.get("month") == lm and t.get("year") == ly]
-    elif period == "this_year":
-        txns = [t for t in all_txns if t.get("year") == now.year]
-    else:
-        txns = all_txns
-
+    elif period == "this_year": txns = [t for t in all_txns if t.get("year") == now.year]
+    else: txns = all_txns
     total_income = sum(t["amount"] for t in txns if t["type"] == "income")
     total_expenses = sum(t["amount"] for t in txns if t["type"] == "expense")
-
     cat_data = {}
     for t in txns:
         cat = t["category"]
         if cat not in cat_data: cat_data[cat] = {"income": 0, "expense": 0, "count": 0}
         cat_data[cat][t["type"]] += t["amount"]
         cat_data[cat]["count"] += 1
-        
     by_category = sorted([{"category": k, **v} for k, v in cat_data.items()], key=lambda x: x["expense"], reverse=True)
-
     trend = []
     for i in range(11, -1, -1):
         m = now.month - i; y = now.year
         while m <= 0: m += 12; y -= 1
         mt = [t for t in all_txns if t.get("month") == m and t.get("year") == y]
-        trend.append({
-            "month": datetime(y, m, 1).strftime("%b %y"),
-            "income": round(sum(t["amount"] for t in mt if t["type"] == "income"), 2),
-            "expenses": round(sum(t["amount"] for t in mt if t["type"] == "expense"), 2)
-        })
+        trend.append({"month": datetime(y, m, 1).strftime("%b %y"), "income": round(sum(t["amount"] for t in mt if t["type"] == "income"), 2), "expenses": round(sum(t["amount"] for t in mt if t["type"] == "expense"), 2)})
+    return {"total_income": total_income, "total_expenses": total_expenses, "net": total_income - total_expenses, "transaction_count": len(txns), "by_category": by_category, "trend": trend, "period": period}
 
-    return {
-        "total_income": total_income, "total_expenses": total_expenses,
-        "net": total_income - total_expenses, "transaction_count": len(txns),
-        "by_category": by_category, "trend": trend, "period": period
-    }
-
-# Ensure the router is registered
+# Register Routers
 app.include_router(api_router)
+app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/api/auth/jwt", tags=["auth"])
+app.include_router(fastapi_users.get_register_router(UserRead, UserCreate), prefix="/api/auth", tags=["auth"])
+app.include_router(fastapi_users.get_users_router(UserRead, UserUpdate), prefix="/api/users", tags=["users"])

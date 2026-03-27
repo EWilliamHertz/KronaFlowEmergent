@@ -34,7 +34,8 @@ export default function Invoices() {
     try {
       const params = activeStatus !== 'all' ? { status: activeStatus } : {};
       const res = await axios.get(`${API}/invoices`, { params });
-      setInvoices(extractArray(res.data, 'invoices'));
+      // Use extractArray without 'invoices' because backend returns the list directly
+      setInvoices(extractArray(res.data));
     } catch (err) { 
       console.error('Failed to load invoices:', err);
       toast.error('Failed to load invoices'); 
@@ -196,7 +197,7 @@ export default function Invoices() {
                 >
                   <td className="px-4 py-3 text-white font-mono text-xs">{inv.invoice_number}</td>
                   <td className="px-4 py-3 text-white text-sm">{inv.client_name}</td>
-                  <td className="px-4 py-3 text-white font-bold tabular-nums">{fmt(inv.amount)} {inv.currency}</td>
+                  <td className="px-4 py-3 text-white font-bold tabular-nums">{fmt(inv.total)} {inv.currency}</td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-1 rounded-sm text-xs font-semibold capitalize" 
                       style={{ background: `${STATUS_COLORS[inv.status]}20`, color: STATUS_COLORS[inv.status] }}

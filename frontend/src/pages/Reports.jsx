@@ -37,9 +37,8 @@ export default function Reports() {
 
   const data = analytics || {};
   const byCategory = extractNestedArray(data, 'by_category');
-  const byMonth = extractNestedArray(data, 'trend'); // <--- Backend calls this 'trend'
-  const topExpenses = []; // Backend currently doesn't provide a top_expenses list
-  const topExpenses = extractNestedArray(data, 'top_expenses');
+  const byMonth = extractNestedArray(data, 'trend'); 
+  const topExpenses = [];
   
   const totalIncome = data.total_income || 0;
   const totalExpenses = data.total_expenses || 0;

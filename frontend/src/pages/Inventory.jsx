@@ -25,14 +25,14 @@ export default function Inventory() {
     setLoading(true);
     try {
       const res = await axios.get(`${API}/inventory`);
-      setItems(extractArray(res.data, 'items'));
+      // Use extractArray without 'items' because backend returns the list directly
+      setItems(extractArray(res.data)); 
     } catch (err) { 
       console.error('Failed to load inventory:', err);
       toast.error('Failed to load inventory'); 
     }
     finally { setLoading(false); }
   }, []);
-
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
@@ -87,8 +87,7 @@ export default function Inventory() {
     e.name.toLowerCase().includes(search.toLowerCase()) || 
     (e.sku || '').toLowerCase().includes(search.toLowerCase())
   );
-  const totalValue = filtered.reduce((s, item) => s + (item.quantity * item.unit_price), 0);
-  const lowStockCount = filtered.filter(item => item.quantity < 10).length;
+const totalValue = filtered.reduce((s, item) => s + (item.quantity * (item.buy_price || 0)), 0);  const lowStockCount = filtered.filter(item => item.quantity < 10).length;
 
   return (
     <div className="space-y-5" data-testid="inventory-page">

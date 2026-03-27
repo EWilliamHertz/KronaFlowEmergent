@@ -58,7 +58,7 @@ export default function Debts() {
     finally { setLoading(false); }
   }, [activeType]);
 
-  useEffect(() => { fetchDebts(); }, [fetchBts]);
+  useEffect(() => { fetchDebts(); }, [fetchDebts]);
 
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
   const openEdit = (d) => {

@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # --- SQLALCHEMY & FASTAPI-USERS IMPORTS ---
-from sqlalchemy import Column, String, Float, Integer, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, String, Float, Integer, Boolean, ForeignKey, JSON, Uuid
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.future import select
@@ -52,7 +52,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
 class Transaction(Base):
     __tablename__ = "transactions"
     id = Column(String, primary_key=True, default=lambda: f"txn_{uuid.uuid4().hex[:12]}")
-    user_id = Column(models.GUID, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
     type = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     category = Column(String, nullable=False)
@@ -68,7 +68,7 @@ class Transaction(Base):
 class Budget(Base):
     __tablename__ = "budgets"
     id = Column(String, primary_key=True, default=lambda: f"bud_{uuid.uuid4().hex[:12]}")
-    user_id = Column(models.GUID, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
     category = Column(String, nullable=False)
     allocated_amount = Column(Float, nullable=False)
     currency = Column(String, default="SEK")
@@ -78,7 +78,7 @@ class Budget(Base):
 class Asset(Base):
     __tablename__ = "assets"
     id = Column(String, primary_key=True, default=lambda: f"ast_{uuid.uuid4().hex[:12]}")
-    user_id = Column(models.GUID, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
     type = Column(String, nullable=False)
     name = Column(String, nullable=False)
     current_value = Column(Float, nullable=False)
@@ -90,7 +90,7 @@ class Asset(Base):
 class Debt(Base):
     __tablename__ = "debts"
     id = Column(String, primary_key=True, default=lambda: f"dbt_{uuid.uuid4().hex[:12]}")
-    user_id = Column(models.GUID, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
     name = Column(String, nullable=False)
     type = Column(String, nullable=False)
     total_amount = Column(Float, nullable=False)
@@ -103,7 +103,7 @@ class Debt(Base):
 class Invoice(Base):
     __tablename__ = "invoices"
     id = Column(String, primary_key=True, default=lambda: f"inv_{uuid.uuid4().hex[:12]}")
-    user_id = Column(models.GUID, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
     invoice_number = Column(String, nullable=False)
     client_name = Column(String, nullable=False)
     client_email = Column(String, nullable=True)
@@ -121,7 +121,7 @@ class Invoice(Base):
 class InventoryItem(Base):
     __tablename__ = "inventory"
     id = Column(String, primary_key=True, default=lambda: f"inv_{uuid.uuid4().hex[:12]}")
-    user_id = Column(models.GUID, ForeignKey("user.id"), nullable=False)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
     name = Column(String, nullable=False)
     sku = Column(String, nullable=True)
     quantity = Column(Float, nullable=False)

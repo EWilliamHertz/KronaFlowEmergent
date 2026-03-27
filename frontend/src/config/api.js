@@ -4,18 +4,14 @@
 import axios from 'axios';
 import { toast } from 'sonner';
 
+// frontend/src/config/api.js
 const getAPIUrl = () => {
-  // First priority: environment variable from .env or Vercel
+  // Use the env var if provided (ensure no trailing slash)
   if (process.env.REACT_APP_BACKEND_URL) {
     return process.env.REACT_APP_BACKEND_URL.replace(/\/$/, '') + '/api';
   }
   
-  // Fallback for local development
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:5000/api';
-  }
-  
-  // Last resort: assume same origin
+  // Last resort: assume same origin (works with your vercel.json rewrites)
   return '/api';
 };
 

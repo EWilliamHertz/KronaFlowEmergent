@@ -5,8 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
-
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+// 1. Import the centralized API config
+import { API } from '../config/api';
 
 const DEBT_TYPES = ['personal_loan', 'credit_card', 'mortgage', 'student_loan', 'car_loan', 'other'];
 
@@ -20,17 +20,26 @@ const TYPE_COLORS = {
 };
 
 const TYPE_ICONS = {
-  personal_loan: '🤝',
+  personal_loan: '🏦',
   credit_card: '💳',
   mortgage: '🏠',
-  student_loan: '📚',
+  student_loan: '🎓',
   car_loan: '🚗',
-  other: '📋'
+  other: '📁'
 };
 
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 
-const EMPTY = { type: 'personal_loan', creditor: '', principal: '', interest_rate: '0', remaining_amount: '', currency: 'SEK', due_date: '', description: '' };
+// 2. Updated EMPTY state to match backend schema (name, total_amount, monthly_payment)
+const EMPTY = { 
+  type: 'personal_loan', 
+  name: '', 
+  total_amount: '', 
+  interest_rate: '0', 
+  remaining_amount: '', 
+  currency: 'SEK', 
+  monthly_payment: '' 
+};
 
 export default function Debts() {
   const { t } = useLanguage();
@@ -42,14 +51,19 @@ export default function Debts() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [paymentModal, setPaymentModal] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({ debt_id: '', amount: '' });
+  const [paymentForm, setPaymentForm] = useState({ debt_id: '', amount: '', date: new Date().toISOString().split('T')[0] });
   const [paymentLoading, setPaymentLoading] = useState(false);
 
+  // 3. Updated fetchDebts with Authorization header
   const fetchDebts = useCallback(async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem('session_token');
       const params = activeType !== 'all' ? { type: activeType } : {};
-      const res = await axios.get(`${API}/debts`, { params });
+      const res = await axios.get(`${API}/debts`, { 
+        params,
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setDebts(extractArray(res.data, 'debts'));
     } catch (err) { 
       console.error('Failed to load debts:', err);
@@ -65,32 +79,37 @@ export default function Debts() {
     setEditing(d);
     setForm({
       type: d.type,
-      creditor: d.creditor,
-      principal: d.principal,
+      name: d.name,
+      total_amount: d.total_amount,
       interest_rate: d.interest_rate || '0',
       remaining_amount: d.remaining_amount,
       currency: d.currency || 'SEK',
-      due_date: d.due_date || '',
-      description: d.description || ''
+      monthly_payment: d.monthly_payment || ''
     });
     setModalOpen(true);
   };
 
+  // 4. Updated handleSave with Authorization header and correct payload
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
+      const token = localStorage.getItem('session_token');
       const payload = {
         ...form,
-        principal: parseFloat(form.principal),
+        total_amount: parseFloat(form.total_amount),
         remaining_amount: parseFloat(form.remaining_amount),
-        interest_rate: parseFloat(form.interest_rate)
+        interest_rate: parseFloat(form.interest_rate),
+        monthly_payment: parseFloat(form.monthly_payment || 0)
       };
+      
+      const config = { headers: { 'Authorization': `Bearer ${token}` } };
+      
       if (editing) {
-        await axios.put(`${API}/debts/${editing.id}`, payload);
+        await axios.put(`${API}/debts/${editing.id}`, payload, config);
         toast.success('Debt updated');
       } else {
-        await axios.post(`${API}/debts`, payload);
+        await axios.post(`${API}/debts`, payload, config);
         toast.success('Debt added');
       }
       setModalOpen(false);
@@ -100,16 +119,24 @@ export default function Debts() {
     } finally { setSaving(false); }
   };
 
+  // 5. Updated handlePayment to use the correct endpoint and Authorization header
   const handlePayment = async (e) => {
     e.preventDefault();
     setPaymentLoading(true);
     try {
-      await axios.post(`${API}/debts/${paymentForm.debt_id}/payments`, {
-        amount: parseFloat(paymentForm.amount)
+      const token = localStorage.getItem('session_token');
+      // Backend expects action: "payment" at /debts/{debt_id}/transaction
+      await axios.post(`${API}/debts/${paymentForm.debt_id}/transaction`, {
+        amount: parseFloat(paymentForm.amount),
+        action: "payment",
+        date: paymentForm.date,
+        note: "Debt payment recorded from dashboard"
+      }, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       toast.success('Payment recorded');
       setPaymentModal(false);
-      setPaymentForm({ debt_id: '', amount: '' });
+      setPaymentForm({ debt_id: '', amount: '', date: new Date().toISOString().split('T')[0] });
       fetchDebts();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to record payment');
@@ -119,7 +146,10 @@ export default function Debts() {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this debt?')) return;
     try {
-      await axios.delete(`${API}/debts/${id}`);
+      const token = localStorage.getItem('session_token');
+      await axios.delete(`${API}/debts/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       toast.success('Debt deleted');
       fetchDebts();
     } catch { toast.error('Failed to delete'); }
@@ -127,11 +157,10 @@ export default function Debts() {
 
   const safeArray = Array.isArray(debts) ? debts : [];
   const totalRemaining = safeArray.reduce((s, d) => s + (d.remaining_amount || 0), 0);
-  const totalPaid = safeArray.reduce((s, d) => s + ((d.principal || 0) - (d.remaining_amount || 0)), 0);
+  const totalPaid = safeArray.reduce((s, d) => s + ((d.total_amount || 0) - (d.remaining_amount || 0)), 0);
 
   return (
     <div className="space-y-5" data-testid="debts-page">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-black text-white tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
           {t('debts.title')}
@@ -144,7 +173,6 @@ export default function Debts() {
         </button>
       </div>
 
-      {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4">
           <p className="text-[#6B6B6B] text-xs mb-1">Total Remaining</p>
@@ -160,7 +188,6 @@ export default function Debts() {
         </div>
       </div>
 
-      {/* Type Tabs */}
       <div className="flex gap-2 flex-wrap">
         {['all', ...DEBT_TYPES].map(type => (
           <button key={type} onClick={() => setActiveType(type)}
@@ -175,7 +202,6 @@ export default function Debts() {
         ))}
       </div>
 
-      {/* Debt Cards */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1,2,3].map(i => <div key={i} className="skeleton h-48 rounded-sm" />)}
@@ -190,25 +216,23 @@ export default function Debts() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="debt-cards">
           {safeArray.map(d => {
             const color = TYPE_COLORS[d.type] || '#6B7280';
-            const progress = d.principal > 0 ? ((d.principal - d.remaining_amount) / d.principal * 100) : 0;
-            const isOverdue = d.due_date && new Date(d.due_date) < new Date();
+            const progress = d.total_amount > 0 ? ((d.total_amount - d.remaining_amount) / d.total_amount * 100) : 0;
             return (
               <div key={d.id} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group relative"
                 data-testid={`debt-card-${d.id}`}
               >
-                {isOverdue && <div className="absolute top-2 right-2 px-2 py-1 rounded-sm bg-[#EF4444]/20 text-[#EF4444] text-xs font-bold">OVERDUE</div>}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2 flex-1">
                     <span className="text-xl">{TYPE_ICONS[d.type]}</span>
                     <div>
-                      <p className="text-white text-sm font-bold">{d.creditor}</p>
+                      <p className="text-white text-sm font-bold">{d.name}</p>
                       <span className="text-xs px-1.5 py-0.5 rounded-sm" style={{ background: `${color}20`, color }}>
                         {d.type.replace(/_/g, ' ')}
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => { setPaymentForm({ debt_id: d.id, amount: '' }); setPaymentModal(true); }} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors">
+                    <button onClick={() => { setPaymentForm({ ...paymentForm, debt_id: d.id }); setPaymentModal(true); }} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors">
                       <CheckCircle2 size={13} />
                     </button>
                     <button onClick={() => openEdit(d)} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
@@ -233,9 +257,8 @@ export default function Debts() {
                     <div className="h-full rounded-full bg-[#10B981] transition-all duration-500" style={{ width: `${progress}%` }} />
                   </div>
                 </div>
-
-                {d.due_date && (
-                  <p className="text-xs text-[#6B6B6B] mt-2">Due: {new Date(d.due_date).toLocaleDateString('sv-SE')}</p>
+                {d.monthly_payment > 0 && (
+                  <p className="text-xs text-[#6B6B6B] mt-2">Monthly Payment: {fmt(d.monthly_payment)} {d.currency}</p>
                 )}
                 {d.interest_rate > 0 && (
                   <p className="text-xs text-[#6B6B6B] mt-1">Interest: {d.interest_rate}%</p>
@@ -248,11 +271,9 @@ export default function Debts() {
 
       {/* Add/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md" data-testid="debt-modal">
+        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white font-bold" style={{ fontFamily: 'Chivo, sans-serif' }}>
-              {editing ? t('debts.editDebt') : t('debts.addDebt')}
-            </DialogTitle>
+            <DialogTitle className="text-white font-bold">{editing ? 'Edit Debt' : 'Add Debt'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSave} className="space-y-3">
             <div>
@@ -264,50 +285,53 @@ export default function Debts() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Creditor Name</label>
-              <input type="text" value={form.creditor} onChange={e => setForm(f => ({ ...f, creditor: e.target.value }))}
-                placeholder="e.g. Bank of Sweden" required data-testid="creditor-input"
-                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Name / Creditor</label>
+              <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Bank of Sweden" required
+                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Principal (SEK)</label>
-                <input type="number" value={form.principal} onChange={e => setForm(f => ({ ...f, principal: e.target.value }))}
-                  placeholder="0" required min="0" step="0.01" data-testid="principal-input"
-                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Total Amount</label>
+                <input type="number" value={form.total_amount} onChange={e => setForm(f => ({ ...f, total_amount: e.target.value }))}
+                  placeholder="0" required min="0" step="0.01"
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
                 />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Remaining (SEK)</label>
+                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Remaining</label>
                 <input type="number" value={form.remaining_amount} onChange={e => setForm(f => ({ ...f, remaining_amount: e.target.value }))}
-                  placeholder="0" required min="0" step="0.01" data-testid="remaining-input"
-                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+                  placeholder="0" required min="0" step="0.01"
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
                 />
               </div>
             </div>
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Interest Rate (%) - Optional</label>
-              <input type="number" value={form.interest_rate} onChange={e => setForm(f => ({ ...f, interest_rate: e.target.value }))}
-                placeholder="0" min="0" step="0.01"
-                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Due Date - Optional</label>
-              <input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
-                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Interest Rate (%)</label>
+                <input type="number" value={form.interest_rate} onChange={e => setForm(f => ({ ...f, interest_rate: e.target.value }))}
+                  placeholder="0" min="0" step="0.01"
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Monthly Payment</label>
+                <input type="number" value={form.monthly_payment} onChange={e => setForm(f => ({ ...f, monthly_payment: e.target.value }))}
+                  placeholder="0" min="0" step="0.01"
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
+                />
+              </div>
             </div>
             <div className="flex gap-3 pt-1">
               <button type="button" onClick={() => setModalOpen(false)}
                 className="flex-1 py-2 rounded-sm border border-[#2A2A2A] text-[#A3A3A3] text-sm font-medium hover:bg-[#2A2A2A] transition-all">
-                {t('common.cancel')}
+                Cancel
               </button>
-              <button type="submit" disabled={saving} data-testid="save-debt-btn"
+              <button type="submit" disabled={saving}
                 className="flex-1 py-2 rounded-sm bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold hover:bg-[#3AA8A8] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                 {saving && <Loader2 size={13} className="animate-spin" />}
-                {t('common.save')}
+                Save Debt
               </button>
             </div>
           </form>
@@ -318,20 +342,26 @@ export default function Debts() {
       <Dialog open={paymentModal} onOpenChange={setPaymentModal}>
         <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white font-bold" style={{ fontFamily: 'Chivo, sans-serif' }}>Record Payment</DialogTitle>
+            <DialogTitle className="text-white font-bold">Record Payment</DialogTitle>
           </DialogHeader>
           <form onSubmit={handlePayment} className="space-y-3">
             <div>
               <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Payment Amount (SEK)</label>
               <input type="number" value={paymentForm.amount} onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
                 placeholder="0" required min="0.01" step="0.01"
-                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
+              />
+            </div>
+             <div>
+              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Date</label>
+              <input type="date" value={paymentForm.date} onChange={e => setPaymentForm(f => ({ ...f, date: e.target.value }))}
+                required className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] [color-scheme:dark]"
               />
             </div>
             <div className="flex gap-3 pt-1">
               <button type="button" onClick={() => setPaymentModal(false)}
                 className="flex-1 py-2 rounded-sm border border-[#2A2A2A] text-[#A3A3A3] text-sm font-medium hover:bg-[#2A2A2A] transition-all">
-                {t('common.cancel')}
+                Cancel
               </button>
               <button type="submit" disabled={paymentLoading}
                 className="flex-1 py-2 rounded-sm bg-[#10B981] text-white text-sm font-bold hover:bg-[#059669] transition-all disabled:opacity-50 flex items-center justify-center gap-2">

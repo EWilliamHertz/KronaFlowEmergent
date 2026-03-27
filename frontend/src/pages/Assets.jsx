@@ -35,18 +35,19 @@ export default function Assets() {
   const [saving, setSaving] = useState(false);
 
   const fetchAssets = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = activeType !== 'all' ? { type: activeType } : {};
-      const res = await axios.get(`${API}/assets`, { params });
-      setAssets(extractArray(res.data, 'assets'));
-    } catch (err) { 
-      console.error('Failed to load assets:', err);
-      toast.error('Failed to load assets'); 
-    }
-    finally { setLoading(false); }
-  }, [activeType]);
-
+  setLoading(true);
+  try {
+    const token = localStorage.getItem('session_token');
+    const params = activeType !== 'all' ? { type: activeType } : {};
+    const res = await axios.get(`${API}/assets`, { 
+      params,
+      headers: { 'Authorization': `Bearer ${token}` } // Add header
+    });
+    setAssets(extractArray(res.data, 'assets'));
+  } catch (err) { 
+    toast.error('Failed to load assets'); 
+  } finally { setLoading(false); }
+}, [activeType]);
   useEffect(() => { fetchAssets(); }, [fetchAssets]);
 
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };

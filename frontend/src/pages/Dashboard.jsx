@@ -44,12 +44,20 @@ export default function Dashboard() {
   const [showAI, setShowAI] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
 
-  useEffect(() => {
-    axios.get(`${API}/dashboard/stats`)
-      .then(res => setStats(res.data))
-      .catch(() => toast.error('Failed to load dashboard'))
-      .finally(() => setLoading(false));
-  }, []);
+// frontend/src/pages/Dashboard.jsx
+
+useEffect(() => {
+  // 1. Get the token from storage
+  const token = localStorage.getItem('session_token');
+  
+  // 2. Pass it in the Authorization header
+  axios.get(`${API}/dashboard/stats`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+    .then(res => setStats(res.data))
+    .catch(() => toast.error('Failed to load dashboard'))
+    .finally(() => setLoading(false));
+}, []);
 
   const getAiInsights = async () => {
     setAiLoading(true);

@@ -31,17 +31,18 @@ export default function Budgets() {
   const [saving, setSaving] = useState(false);
 
   const fetchBudgets = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${API}/budgets`, { params: { month, year } });
-      setBudgets(extractArray(res.data, 'budgets'));
-    } catch (err) { 
-      console.error('Failed to load budgets:', err);
-      toast.error('Failed to load budgets'); 
-    }
-    finally { setLoading(false); }
-  }, [month, year]);
-
+  setLoading(true);
+  try {
+    const token = localStorage.getItem('session_token'); // Get token
+    const res = await axios.get(`${API}/budgets`, { 
+      params: { month, year },
+      headers: { 'Authorization': `Bearer ${token}` } // Add header
+    });
+    setBudgets(extractArray(res.data, 'budgets'));
+  } catch (err) { 
+    toast.error('Failed to load budgets'); 
+  } finally { setLoading(false); }
+}, [month, year]);
   useEffect(() => { fetchBudgets(); }, [fetchBudgets]);
 
   const openAdd = () => {

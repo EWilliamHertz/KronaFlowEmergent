@@ -2,9 +2,17 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext(null);
-
-// By using just '/api', Vercel automatically routes it to your Python backend!
 const API = '/api';
+
+// --- GLOBAL SECURITY INTERCEPTOR ---
+// This ensures EVERY request on EVERY page automatically includes your token!
+axios.interceptors.request.use(config => {
+  const token = localStorage.getItem('session_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -13,11 +21,9 @@ export const AuthProvider = ({ children }) => {
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('session_token');
-      if (!token) throw new Error("No token");
+      if (!token) throw new Error("No token found");
       
-      const res = await axios.get(`${API}/users/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`${API}/users/me`);
       setUser(res.data);
     } catch (err) {
       setUser(null);
@@ -32,7 +38,6 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    // FastAPI expects form data for login, NOT json!
     const formData = new URLSearchParams();
     formData.append('username', email);
     formData.append('password', password);
@@ -43,7 +48,6 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (email, password, name) => {
-    // 1. Create the user
     await axios.post(`${API}/auth/register`, {
       email,
       password,
@@ -52,14 +56,13 @@ export const AuthProvider = ({ children }) => {
       is_superuser: false,
       is_verified: false
     });
-    
-    // 2. Automatically log them in after creating the account
     await login(email, password);
   };
 
   const logout = () => {
     localStorage.removeItem('session_token');
     setUser(null);
+    window.location.href = "/login";
   };
 
   return (

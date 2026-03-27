@@ -33,6 +33,13 @@ EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- SAFE DICT HELPER ---
+# This safely removes the SQLAlchemy internal state so FastAPI can convert it to JSON!
+def to_dict(obj):
+    if not obj:
+        return None
+    return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
+
 # ==========================================
 # 1. SQLALCHEMY DATABASE & MODELS
 # ==========================================
@@ -309,7 +316,7 @@ async def get_transactions(
     if category: query = query.where(Transaction.category == category)
     
     result = await session.execute(query)
-    txns = [t.__dict__ for t in result.scalars().all()]
+    txns = [to_dict(t) for t in result.scalars().all()]
     
     if search:
         sl = search.lower()
@@ -332,7 +339,7 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(curre
     session.add(new_txn)
     await session.commit()
     await session.refresh(new_txn)
-    return new_txn
+    return to_dict(new_txn)
 
 @api_router.put("/transactions/{txn_id}")
 async def update_transaction(txn_id: str, data: TransactionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -354,7 +361,7 @@ async def update_transaction(txn_id: str, data: TransactionCreate, user: User = 
     txn.year = date_obj.year
     await session.commit()
     await session.refresh(txn)
-    return txn
+    return to_dict(txn)
 
 
 @api_router.delete("/transactions/{txn_id}")
@@ -396,7 +403,7 @@ async def bulk_import_transactions(data: TransactionBulkCreate, user: User = Dep
 @api_router.get("/transactions/stats")
 async def get_transaction_stats(month: Optional[int] = None, year: Optional[int] = None, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     result = await session.execute(select(Transaction).where(Transaction.user_id == user.id))
-    all_txns = [t.__dict__ for t in result.scalars().all()]
+    all_txns = [to_dict(t) for t in result.scalars().all()]
     
     if month is not None and year is not None:
         period_txns = [t for t in all_txns if t.get("month") == month and t.get("year") == year]
@@ -432,8 +439,8 @@ async def get_budgets(month: Optional[int] = None, year: Optional[int] = None, u
     budgets_res = await session.execute(select(Budget).where(Budget.user_id == user.id, Budget.month == m, Budget.year == y))
     txns_res = await session.execute(select(Transaction).where(Transaction.user_id == user.id, Transaction.month == m, Transaction.year == y, Transaction.type == "expense"))
     
-    budgets = [b.__dict__ for b in budgets_res.scalars().all()]
-    txns = [t.__dict__ for t in txns_res.scalars().all()]
+    budgets = [to_dict(b) for b in budgets_res.scalars().all()]
+    txns = [to_dict(t) for t in txns_res.scalars().all()]
     
     for budget in budgets:
         spent = sum(t["amount"] for t in txns if t["category"] == budget["category"])
@@ -450,7 +457,7 @@ async def create_budget(data: BudgetCreate, user: User = Depends(current_active_
     session.add(new_budget)
     await session.commit()
     await session.refresh(new_budget)
-    return new_budget
+    return to_dict(new_budget)
 
 @api_router.put("/budgets/{budget_id}")
 async def update_budget(budget_id: str, data: BudgetCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -462,7 +469,7 @@ async def update_budget(budget_id: str, data: BudgetCreate, user: User = Depends
     budget.category = data.category
     await session.commit()
     await session.refresh(budget)
-    return budget
+    return to_dict(budget)
 
 @api_router.delete("/budgets/{budget_id}")
 async def delete_budget(budget_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -481,7 +488,7 @@ async def get_assets(type: Optional[str] = None, user: User = Depends(current_ac
     if type: query = query.where(Asset.type == type)
     
     result = await session.execute(query)
-    assets = [a.__dict__ for a in result.scalars().all()]
+    assets = [to_dict(a) for a in result.scalars().all()]
     
     for asset in assets:
         pv = asset.get("purchase_value") or 0
@@ -499,7 +506,7 @@ async def create_asset(data: AssetCreate, user: User = Depends(current_active_us
     session.add(new_asset)
     await session.commit()
     await session.refresh(new_asset)
-    return new_asset
+    return to_dict(new_asset)
 
 @api_router.put("/assets/{asset_id}")
 async def update_asset(asset_id: str, data: AssetCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -511,7 +518,7 @@ async def update_asset(asset_id: str, data: AssetCreate, user: User = Depends(cu
         if value is not None: setattr(asset, key, value)
     await session.commit()
     await session.refresh(asset)
-    return asset
+    return to_dict(asset)
 
 @api_router.delete("/assets/{asset_id}")
 async def delete_asset(asset_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -527,7 +534,7 @@ async def delete_asset(asset_id: str, user: User = Depends(current_active_user),
 @api_router.get("/debts")
 async def get_debts(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     result = await session.execute(select(Debt).where(Debt.user_id == user.id))
-    return [d.__dict__ for d in result.scalars().all()]
+    return [to_dict(d) for d in result.scalars().all()]
 
 @api_router.post("/debts")
 async def create_debt(data: DebtCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -535,7 +542,7 @@ async def create_debt(data: DebtCreate, user: User = Depends(current_active_user
     session.add(new_debt)
     await session.commit()
     await session.refresh(new_debt)
-    return new_debt
+    return to_dict(new_debt)
 
 @api_router.put("/debts/{debt_id}")
 async def update_debt(debt_id: str, data: DebtCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -547,7 +554,7 @@ async def update_debt(debt_id: str, data: DebtCreate, user: User = Depends(curre
         setattr(debt, key, value)
     await session.commit()
     await session.refresh(debt)
-    return debt
+    return to_dict(debt)
 
 @api_router.delete("/debts/{debt_id}")
 async def delete_debt(debt_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -574,7 +581,7 @@ async def make_payment(debt_id: str, data: PaymentCreate, user: User = Depends(c
     
     await session.commit()
     await session.refresh(debt)
-    return debt
+    return to_dict(debt)
 
 # --- DASHBOARD & AI INSIGHTS ---
 
@@ -584,7 +591,7 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
     current_month, current_year = now.month, now.year
 
     txns_res = await session.execute(select(Transaction).where(Transaction.user_id == user.id))
-    all_txns = [t.__dict__ for t in txns_res.scalars().all()]
+    all_txns = [to_dict(t) for t in txns_res.scalars().all()]
     
     assets_res = await session.execute(select(Asset).where(Asset.user_id == user.id))
     total_asset_value = sum(a.current_value for a in assets_res.scalars().all())
@@ -631,7 +638,7 @@ async def get_ai_insights(data: AIInsightRequest, user: User = Depends(current_a
     now = datetime.now(timezone.utc)
     
     txns_res = await session.execute(select(Transaction).where(Transaction.user_id == user.id, Transaction.month == now.month))
-    monthly_txns = [t.__dict__ for t in txns_res.scalars().all()]
+    monthly_txns = [to_dict(t) for t in txns_res.scalars().all()]
     
     monthly_income = sum(t["amount"] for t in monthly_txns if t["type"] == "income")
     monthly_expenses = sum(t["amount"] for t in monthly_txns if t["type"] == "expense")
@@ -669,7 +676,7 @@ async def update_profile(data: UpdateProfileRequest, user: User = Depends(curren
     await session.commit()
     await session.refresh(db_user)
     return {
-        "id": db_user.id, "email": db_user.email, "name": db_user.name, 
+        "id": str(db_user.id), "email": db_user.email, "name": db_user.name, 
         "organization": db_user.organization, "language": db_user.language, "currency": db_user.currency
     }
 
@@ -681,7 +688,7 @@ async def get_invoices(status: Optional[str] = None, user: User = Depends(curren
     if status: query = query.where(Invoice.status == status)
     
     result = await session.execute(query)
-    invoices = [inv.__dict__ for inv in result.scalars().all()]
+    invoices = [to_dict(inv) for inv in result.scalars().all()]
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for inv in invoices:
@@ -715,7 +722,7 @@ async def create_invoice(data: InvoiceCreate, user: User = Depends(current_activ
     session.add(new_invoice)
     await session.commit()
     await session.refresh(new_invoice)
-    return new_invoice
+    return to_dict(new_invoice)
 
 @api_router.put("/invoices/{invoice_id}/status")
 async def update_invoice_status(invoice_id: str, data: InvoiceStatusUpdate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -729,7 +736,7 @@ async def update_invoice_status(invoice_id: str, data: InvoiceStatusUpdate, user
     invoice.status = data.status
     await session.commit()
     await session.refresh(invoice)
-    return invoice
+    return to_dict(invoice)
 
 @api_router.delete("/invoices/{invoice_id}")
 async def delete_invoice(invoice_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -746,7 +753,7 @@ async def delete_invoice(invoice_id: str, user: User = Depends(current_active_us
 @api_router.get("/inventory")
 async def get_inventory(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     result = await session.execute(select(InventoryItem).where(InventoryItem.user_id == user.id))
-    items = [item.__dict__ for item in result.scalars().all()]
+    items = [to_dict(item) for item in result.scalars().all()]
     
     for item in items:
         item["total_value"] = round(item.get("quantity", 0) * item.get("buy_price", 0), 2)
@@ -759,7 +766,7 @@ async def create_inventory_item(data: InventoryItemCreate, user: User = Depends(
     session.add(new_item)
     await session.commit()
     await session.refresh(new_item)
-    return new_item
+    return to_dict(new_item)
 
 @api_router.put("/inventory/{item_id}")
 async def update_inventory_item(item_id: str, data: InventoryItemCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -772,7 +779,7 @@ async def update_inventory_item(item_id: str, data: InventoryItemCreate, user: U
         
     await session.commit()
     await session.refresh(item)
-    return item
+    return to_dict(item)
 
 @api_router.delete("/inventory/{item_id}")
 async def delete_inventory_item(item_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -791,7 +798,7 @@ async def get_report_summary(period: str = "all", user: User = Depends(current_a
     now = datetime.now(timezone.utc)
     
     result = await session.execute(select(Transaction).where(Transaction.user_id == user.id))
-    all_txns = [t.__dict__ for t in result.scalars().all()]
+    all_txns = [to_dict(t) for t in result.scalars().all()]
 
     if period == "this_month":
         txns = [t for t in all_txns if t.get("month") == now.month and t.get("year") == now.year]

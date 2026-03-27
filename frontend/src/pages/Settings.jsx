@@ -5,8 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
-
+const API = (process.env.REACT_APP_BACKEND_URL || '') + '/api';
 const CURRENCIES = ['SEK', 'EUR', 'USD', 'GBP', 'NOK', 'DKK'];
 const SECTIONS = ['profile', 'preferences', 'import', 'security'];
 const SECTION_ICONS = { profile: User, preferences: Globe, import: Upload, security: Shield };
@@ -83,17 +82,28 @@ export default function Settings() {
   const [importResult, setImportResult] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const handleSaveProfile = async (e) => {
+const handleSaveProfile = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await axios.put(`${API}/profile`, profile);
+      // Explicitly grab the token so the backend knows exactly who you are
+      const token = localStorage.getItem('session_token');
+      
+      const res = await axios.put(`${API}/profile`, profile, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
       updateUser(res.data);
       setLanguage(profile.language);
       toast.success('Profile updated');
     } catch (err) {
-      toast.error(err.response?.data?.detail || t('common.error'));
-    } finally { setSaving(false); }
+      console.error("Save error:", err);
+      toast.error(err.response?.data?.detail || 'Failed to save changes. Please try again.');
+    } finally { 
+      setSaving(false); 
+    }
   };
 
   const handleFileSelect = (file) => {

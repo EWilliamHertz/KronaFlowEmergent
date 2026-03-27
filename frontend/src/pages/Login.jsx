@@ -15,26 +15,34 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
+
     try {
-      if (mode === 'login') {
-        await login(form.email, form.password);
+      if (isLoginView) {
+        await login(email, password);
       } else {
-        if (!form.name.trim()) {
-          toast.error('Please enter your name');
-          setLoading(false);
-          return;
-        }
-        await register(form.email, form.password, form.name);
+        await register(email, password, name || 'New User');
       }
-      navigate('/dashboard', { replace: true });
+      // If we get here, it worked!
+      alert("Success! Logging you in...");
+      navigate('/dashboard'); 
+      
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Authentication failed');
-    } finally {
+      console.error(err);
       setLoading(false);
+      
+      // iPad Crash Reporter: This grabs the hidden data from the server
+      const status = err.response?.status || "No Status";
+      const detail = err.response?.data?.detail || err.response?.data || "No Data";
+      const message = err.message;
+      
+      // Pop it up on the screen
+      alert(`🚨 CRASH REPORT 🚨\n\nStatus: ${status}\nError: ${message}\nDetails: ${JSON.stringify(detail)}`);
+      
+      setError(typeof detail === 'string' ? detail : "Authentication failed. See alert for details.");
     }
   };
-
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex">

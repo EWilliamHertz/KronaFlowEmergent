@@ -71,7 +71,7 @@ class Transaction(Base):
     year = Column(Integer, nullable=False)
     recurring = Column(Boolean, default=False)
     recurrence = Column(String, nullable=True)
-
+linked_debt_id = Column(String, nullable=True)
 class Budget(Base):
     __tablename__ = "budgets"
     id = Column(String, primary_key=True, default=lambda: f"bud_{uuid.uuid4().hex[:12]}")
@@ -229,11 +229,12 @@ class DebtCreate(BaseModel):
     monthly_payment: float
     currency: str = "SEK"
 
-class PaymentCreate(BaseModel):
+class DebtTransactionCreate(BaseModel):
     amount: float
+    action: str  # "payment" (reduces debt) or "increase" (adds to debt)
     date: str
     note: Optional[str] = None
-
+    currency: str = "SEK"
 class UpdateProfileRequest(BaseModel):
     name: Optional[str] = None
     organization: Optional[str] = None
@@ -565,19 +566,67 @@ async def delete_debt(debt_id: str, user: User = Depends(current_active_user), s
     await session.commit()
     return {"message": "Deleted"}
 
-@api_router.post("/debts/{debt_id}/payment")
-async def make_payment(debt_id: str, data: PaymentCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+@api_router.get("/debts/{debt_id}")
+async def get_single_debt(debt_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    # 1. Fetch the specific debt
     result = await session.execute(select(Debt).where(Debt.id == debt_id, Debt.user_id == user.id))
     debt = result.scalars().first()
     if not debt: raise HTTPException(status_code=404, detail="Debt not found")
     
-    payment = {"amount": data.amount, "date": data.date, "note": data.note, "id": f"pay_{uuid.uuid4().hex[:12]}"}
-    debt.remaining_amount = max(0, debt.remaining_amount - data.amount)
+    # 2. Fetch all global transactions linked to this debt
+    txn_result = await session.execute(
+        select(Transaction)
+        .where(Transaction.linked_debt_id == debt_id, Transaction.user_id == user.id)
+        .order_by(Transaction.date.desc())
+    )
+    linked_txns = [to_dict(t) for t in txn_result.scalars().all()]
     
-    # SQLAlchemy JSON mutations require reassignment
-    current_payments = list(debt.payments)
-    current_payments.append(payment)
-    debt.payments = current_payments
+    debt_dict = to_dict(debt)
+    debt_dict["history"] = linked_txns # Attach full transaction history to the response
+    return debt_dict
+
+@api_router.post("/debts/{debt_id}/transaction")
+async def record_debt_transaction(debt_id: str, data: DebtTransactionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    # 1. Find the debt
+    result = await session.execute(select(Debt).where(Debt.id == debt_id, Debt.user_id == user.id))
+    debt = result.scalars().first()
+    if not debt: raise HTTPException(status_code=404, detail="Debt not found")
+    
+    try: date_obj = datetime.strptime(data.date[:10], "%Y-%m-%d")
+    except: date_obj = datetime.now(timezone.utc)
+
+    # 2. Determine the math based on the action
+    if data.action == "payment":
+        # Paying a debt is an EXPENSE. It decreases your remaining debt balance.
+        debt.remaining_amount = max(0, debt.remaining_amount - data.amount)
+        txn_type = "expense"
+        txn_category = "Debt Repayment"
+        desc = data.note or f"Payment to {debt.name}"
+    elif data.action == "increase":
+        # Taking more loan acts like INCOME to your cashflow, but increases debt balance.
+        debt.remaining_amount += data.amount
+        debt.total_amount += data.amount # Increase the ceiling of the loan
+        txn_type = "income"
+        txn_category = "Loan Disbursement"
+        desc = data.note or f"Additional funds from {debt.name}"
+    else:
+        raise HTTPException(status_code=400, detail="Action must be 'payment' or 'increase'")
+
+    # 3. Create the Global Transaction
+    new_txn = Transaction(
+        user_id=user.id,
+        type=txn_type,
+        amount=data.amount,
+        currency=data.currency,
+        category=txn_category,
+        description=desc,
+        date=data.date[:10],
+        party=debt.name,
+        month=date_obj.month,
+        year=date_obj.year,
+        linked_debt_id=debt.id  # Link it directly to the debt!
+    )
+    session.add(new_txn)
     
     await session.commit()
     await session.refresh(debt)

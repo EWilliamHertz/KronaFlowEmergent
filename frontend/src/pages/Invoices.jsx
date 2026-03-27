@@ -67,6 +67,7 @@ export default function Invoices() {
         client_name: form.client_name,
         issue_date: new Date().toISOString().split('T')[0],
         due_date: form.due_date || new Date().toISOString().split('T')[0],
+        // Backend requires an "items" array with these specific keys:
         items: [{
           description: form.description || "Service Rendered",
           quantity: 1,
@@ -74,9 +75,9 @@ export default function Invoices() {
           vat_pct: 25.0
         }],
         currency: form.currency || 'SEK',
-        notes: form.description
-      };
-      if (editing) {
+        notes: form.description || ''
+      };    
+        if (editing) {
         await axios.put(`${API}/invoices/${editing.id}`, payload);
         toast.success('Invoice updated');
       } else {

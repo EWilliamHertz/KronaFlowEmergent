@@ -6,7 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const API = (process.env.REACT_APP_BACKEND_URL || '') + '/api';
 
 const ASSET_TYPES = ['stock','crypto','real_estate','vehicle','collectible','other'];
 

@@ -22,14 +22,12 @@ export default function Reports() {
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
+      // Changed endpoint from /analytics to /reports/summary
       const res = await axios.get(`${API}/reports/summary`, { params: { period: dateRange } });
-      // Handle both direct analytics object and wrapped response
-      let data = res.data;
-      if (data.analytics) data = data.analytics;
-      setAnalytics(data || {});
+      setAnalytics(res.data || {});
     } catch (err) { 
-      console.error('Failed to load analytics:', err);
-      toast.error('Failed to load analytics'); 
+      console.error('Failed to load reports:', err);
+      toast.error('Failed to load reports'); 
       setAnalytics({});
     }
     finally { setLoading(false); }
@@ -39,7 +37,8 @@ export default function Reports() {
 
   const data = analytics || {};
   const byCategory = extractNestedArray(data, 'by_category');
-  const byMonth = extractNestedArray(data, 'by_month');
+  const byMonth = extractNestedArray(data, 'trend'); // <--- Backend calls this 'trend'
+  const topExpenses = []; // Backend currently doesn't provide a top_expenses list
   const topExpenses = extractNestedArray(data, 'top_expenses');
   
   const totalIncome = data.total_income || 0;

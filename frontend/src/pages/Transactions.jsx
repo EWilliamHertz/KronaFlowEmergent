@@ -5,8 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
-
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+import { API } from '../config/api';
 
 const CATEGORY_COLORS = {
   food: '#10B981', transport: '#3B82F6', housing: '#8B5CF6',
@@ -65,9 +64,38 @@ export default function Transactions() {
       if (filter.type !== 'all') params.type = filter.type;
       if (filter.category) params.category = filter.category;
       if (filter.search) params.search = filter.search;
+      
+      console.log('📡 Fetching transactions from:', `${API}/transactions`, { params });
       const res = await axios.get(`${API}/transactions`, { params });
-      setTxns(res.data);
-    } catch { toast.error('Failed to load transactions'); }
+      
+      // Handle different response formats
+      let data = res.data;
+      console.log('📦 Raw response:', data);
+      
+      // If the response is an object with a 'data' or 'transactions' key, extract it
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        if (Array.isArray(data.transactions)) {
+          data = data.transactions;
+        } else if (Array.isArray(data.data)) {
+          data = data.data;
+        } else {
+          console.warn('⚠️ Unexpected response format:', data);
+          data = [];
+        }
+      }
+      
+      // Ensure data is an array
+      if (!Array.isArray(data)) {
+        console.error('❌ Response is not an array:', data);
+        data = [];
+      }
+      
+      setTxns(data);
+    } catch (err) {
+      console.error('❌ Failed to load transactions:', err);
+      toast.error(`Failed to load transactions: ${err.message}`);
+      setTxns([]);
+    }
     finally { setLoading(false); }
   }, [filter]);
 
@@ -76,7 +104,10 @@ export default function Transactions() {
       const params = PERIOD_PARAMS[statPeriod] || {};
       const res = await axios.get(`${API}/transactions/stats`, { params });
       setStats(res.data);
-    } catch {}
+    } catch (err) {
+      console.error('❌ Failed to load stats:', err);
+      toast.error('Failed to load statistics');
+    }
   }, [statPeriod]);
 
   useEffect(() => { fetchTxns(); }, [fetchTxns]);

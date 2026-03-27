@@ -115,7 +115,7 @@ export default function Transactions() {
         const res = await axios.get(`${API}/categories`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        setCategories(res.data);
+setCategories(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
         console.error("Failed to fetch categories");
     }
@@ -432,8 +432,8 @@ export default function Transactions() {
                 className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
               >
                 <option value="">Select a category...</option>
-                {categories
-                    .filter(c => c.type === form.type)
+            {(Array.isArray(categories) ? categories : [])
+    .filter(c => c.type === form.type)
                     .map(cat => (
                         <option key={cat.id} value={cat.name} className="bg-[#1A1A1A] capitalize">{cat.name}</option>
                 ))}

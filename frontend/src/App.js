@@ -3,6 +3,7 @@ import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import { APIDebugPanel } from './components/APIDebug';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -72,6 +73,7 @@ function App() {
               }}
             />
             <AppRouter />
+            <APIDebugPanel />
           </LanguageProvider>
         </AuthProvider>
       </BrowserRouter>

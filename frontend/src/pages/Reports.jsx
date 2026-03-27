@@ -4,8 +4,7 @@ import { Loader2, BarChart3, TrendingUp, PieChart, Calendar } from 'lucide-react
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractNestedArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
-
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+import { API } from '../config/api';
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -23,7 +22,7 @@ export default function Reports() {
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/analytics`, { params: { period: dateRange } });
+      const res = await axios.get(`${API}/reports/summary`, { params: { period: dateRange } });
       // Handle both direct analytics object and wrapped response
       let data = res.data;
       if (data.analytics) data = data.analytics;

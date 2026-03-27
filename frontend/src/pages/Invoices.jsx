@@ -5,8 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
-
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+import { API } from '../config/api';
 
 const STATUSES = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
 const STATUS_COLORS = {
@@ -65,8 +64,17 @@ export default function Invoices() {
     setSaving(true);
     try {
       const payload = {
-        ...form,
-        amount: parseFloat(form.amount)
+        client_name: form.client_name,
+        issue_date: new Date().toISOString().split('T')[0],
+        due_date: form.due_date || new Date().toISOString().split('T')[0],
+        items: [{
+          description: form.description || "Service Rendered",
+          quantity: 1,
+          unit_price: parseFloat(form.amount),
+          vat_pct: 25.0
+        }],
+        currency: form.currency || 'SEK',
+        notes: form.description
       };
       if (editing) {
         await axios.put(`${API}/invoices/${editing.id}`, payload);

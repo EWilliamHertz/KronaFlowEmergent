@@ -5,8 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
-
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+import { API } from '../config/api';
 
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 
@@ -54,10 +53,10 @@ export default function Inventory() {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = {
+     const payload = {
         ...form,
-        quantity: parseInt(form.quantity),
-        unit_price: parseFloat(form.unit_price)
+        quantity: parseFloat(form.quantity),
+        buy_price: parseFloat(form.unit_price) // Backend expects buy_price
       };
       if (editing) {
         await axios.put(`${API}/inventory/${editing.id}`, payload);

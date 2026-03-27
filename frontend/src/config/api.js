@@ -4,18 +4,7 @@
 import axios from 'axios';
 import { toast } from 'sonner';
 
-// frontend/src/config/api.js
-const getAPIUrl = () => {
-  // Use the env var if provided (ensure no trailing slash)
-  if (process.env.REACT_APP_BACKEND_URL) {
-    return process.env.REACT_APP_BACKEND_URL.replace(/\/$/, '') + '/api';
-  }
-  
-  // Last resort: assume same origin (works with your vercel.json rewrites)
-  return '/api';
-};
-
-export const API = getAPIUrl();
+export const API = '/api';
 
 console.log('🔌 API URL:', API);
 

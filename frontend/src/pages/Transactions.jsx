@@ -5,9 +5,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
+import { API } from '../config/api';
 
-// Automatically construct API URL, fallback to local if env is missing
-const API = (process.env.REACT_APP_BACKEND_URL || '') + '/api';
 
 // Safe number formatter
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);

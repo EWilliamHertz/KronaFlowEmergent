@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -59,20 +60,22 @@ function AppRouter() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <LanguageProvider>
-          <Toaster
-            theme="dark"
-            position="top-right"
-            toastOptions={{
-              style: { background: '#1A1A1A', border: '1px solid #2A2A2A', color: '#fff' }
-            }}
-          />
-          <AppRouter />
-        </LanguageProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <LanguageProvider>
+            <Toaster
+              theme="dark"
+              position="top-right"
+              toastOptions={{
+                style: { background: '#1A1A1A', border: '1px solid #2A2A2A', color: '#fff' }
+              }}
+            />
+            <AppRouter />
+          </LanguageProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

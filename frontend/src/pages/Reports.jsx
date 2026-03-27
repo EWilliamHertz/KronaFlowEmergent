@@ -20,19 +20,19 @@ export default function Reports() {
   const [dateRange, setDateRange] = useState('month');
 
   const fetchAnalytics = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Changed endpoint from /analytics to /reports/summary
-      const res = await axios.get(`${API}/reports/summary`, { params: { period: dateRange } });
-      setAnalytics(res.data || {});
-    } catch (err) { 
-      console.error('Failed to load reports:', err);
-      toast.error('Failed to load reports'); 
-      setAnalytics({});
-    }
-    finally { setLoading(false); }
-  }, [dateRange]);
-
+  setLoading(true);
+  try {
+    const token = localStorage.getItem('session_token');
+    const res = await axios.get(`${API}/reports/summary`, { 
+      params: { period: dateRange },
+      headers: { 'Authorization': `Bearer ${token}` } // Add this
+    });
+    setAnalytics(res.data || {});
+  } catch (err) { 
+    toast.error('Failed to load reports'); 
+    setAnalytics({});
+  } finally { setLoading(false); }
+}, [dateRange]);
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
   const data = analytics || {};

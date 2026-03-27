@@ -8,9 +8,7 @@ import { TrendingUp, TrendingDown, Wallet, DollarSign, Plus, ArrowRight, X, Load
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-
-const API = (process.env.REACT_APP_BACKEND_URL || '') + '/api';
-
+import { API } from '../config/api';
 const CATEGORY_COLORS = {
   food: '#10B981', transport: '#3B82F6', housing: '#8B5CF6',
   entertainment: '#F59E0B', healthcare: '#EF4444', shopping: '#EC4899',
@@ -59,17 +57,11 @@ useEffect(() => {
     .finally(() => setLoading(false));
 }, []);
 
-  const getAiInsights = async () => {
-    setAiLoading(true);
-    try {
-      const res = await axios.post(`${API}/ai/insights`, { context: aiQuestion || null });
-      setAiInsights(res.data.insights);
-    } catch {
-      toast.error('AI insights unavailable. Please try again.');
-    } finally {
-      setAiLoading(false);
-    }
-  };
+const token = localStorage.getItem('session_token');
+const res = await axios.post(`${API}/ai/insights`, 
+  { context: aiQuestion || null },
+  { headers: { 'Authorization': `Bearer ${token}` } } // Add this line
+);
 
   if (loading) {
     return (

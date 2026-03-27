@@ -5,8 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
-
-const API = (process.env.REACT_APP_BACKEND_URL || '') + '/api';
+import { API } from '../config/api';
 const CATEGORIES = ['food','transport','housing','entertainment','healthcare','shopping','utilities','education','other'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -37,7 +36,7 @@ export default function Budgets() {
       params: { month, year },
       headers: { 'Authorization': `Bearer ${token}` } // Add header
     });
-    setBudgets(extractArray(res.data, 'budgets'));
+setBudgets(extractArray(res.data));
   } catch (err) { 
     toast.error('Failed to load budgets'); 
   } finally { setLoading(false); }
@@ -57,6 +56,7 @@ export default function Budgets() {
   };
 
   const handleSave = async (e) => {
+    const config = { headers: { 'Authorization': `Bearer ${token}` } };
     e.preventDefault();
     setSaving(true);
     try {
@@ -76,6 +76,7 @@ export default function Budgets() {
   };
 
   const handleDelete = async (id) => {
+    const config = { headers: { 'Authorization': `Bearer ${token}` } };
     if (!window.confirm('Delete this budget?')) return;
     try {
       await axios.delete(`${API}/budgets/${id}`);

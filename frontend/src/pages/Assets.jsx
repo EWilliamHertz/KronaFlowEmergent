@@ -5,9 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
-
-const API = (process.env.REACT_APP_BACKEND_URL || '') + '/api';
-
+import { API } from '../config/api';
 const ASSET_TYPES = ['stock','crypto','real_estate','vehicle','collectible','other'];
 
 const TYPE_COLORS = {
@@ -16,8 +14,8 @@ const TYPE_COLORS = {
 };
 
 const TYPE_ICONS = {
-  stock: '📈', crypto: '₿', real_estate: '🏠',
-  vehicle: '🚗', collectible: '🎨', other: '💼'
+  stock: '📈', crypto: '🪙', real_estate: '🏠',
+  vehicle: '🚗', collectible: '🎨', other: '📦'
 };
 
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
@@ -43,7 +41,7 @@ export default function Assets() {
       params,
       headers: { 'Authorization': `Bearer ${token}` } // Add header
     });
-    setAssets(extractArray(res.data, 'assets'));
+setAssets(extractArray(res.data));
   } catch (err) { 
     toast.error('Failed to load assets'); 
   } finally { setLoading(false); }

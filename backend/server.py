@@ -373,6 +373,25 @@ async def migrate_savings_schema():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@api_router.get("/migrate-savings-schema")
+async def migrate_savings_schema_get():
+    """GET version - Click this link on iPad to fix Savings tables"""
+    try:
+        async with engine.begin() as conn:
+            # Drop tables with CASCADE to remove constraints
+            await conn.execute(text("DROP TABLE IF EXISTS savings_contributions CASCADE"))
+            await conn.execute(text("DROP TABLE IF EXISTS savings_goals CASCADE"))
+            
+            # Recreate with correct schema
+            await conn.run_sync(Base.metadata.create_all)
+        
+        return {
+            "status": "success",
+            "message": "✅ Savings tables fixed! Refresh KronaFlow and the Savings tab should work now."
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # --- CATEGORIES ---
 
 @api_router.get("/categories")

@@ -99,6 +99,7 @@ export default function Debts() {
   useEffect(() => { fetchDebts(); }, [fetchDebts]);
 
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
+  
   const openEdit = (d, e) => {
     if (e) e.stopPropagation();
     setEditing(d);
@@ -133,10 +134,10 @@ export default function Debts() {
       const token = localStorage.getItem('session_token');
       const payload = {
         ...form,
-        total_amount: parseFloat(form.total_amount),
-        remaining_amount: parseFloat(form.remaining_amount),
-        interest_rate: parseFloat(form.interest_rate),
-        monthly_payment: parseFloat(form.monthly_payment || 0)
+        total_amount: parseFloat(form.total_amount) || 0,
+        remaining_amount: parseFloat(form.remaining_amount) || 0,
+        interest_rate: parseFloat(form.interest_rate) || 0,
+        monthly_payment: parseFloat(form.monthly_payment) || 0
       };
       
       const config = { headers: { 'Authorization': `Bearer ${token}` } };
@@ -287,7 +288,7 @@ export default function Debts() {
                       <button onClick={(e) => openPayment(d.id, e)} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors" title="Record Payment">
                         <CheckCircle2 size={13} />
                       </button>
-                      <button onClick={(e) => openEdit(d, e)} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
+                      <button onClick={(e) => openEdit(d, e)} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors" title="Edit Debt">
                         <Pencil size={13} />
                       </button>
                       <button onClick={(e) => handleDelete(d.id, e)} className="text-[#6B6B6B] hover:text-[#EF4444] p-1 transition-colors">
@@ -311,24 +312,26 @@ export default function Debts() {
                   </div>
                 </div>
 
-                {/* DEBT FREE PROJECTOR */}
+                {/* CRASH-PROOF DEBT FREE PROJECTOR ON CARD */}
                 {(() => {
                   if (!d.monthly_payment || d.monthly_payment <= 0) {
                     return (
                       <div className="mt-5 pt-3 border-t border-[#2A2A2A]">
                         <button onClick={(e) => openEdit(d, e)} className="text-xs text-[#4FC3C3] hover:underline flex items-center gap-1">
-                          Set monthly payment to see debt-free date &rarr;
+                          Set monthly payment to see date &rarr;
                         </button>
                       </div>
                     );
                   }
 
-                  const P = d.remaining_amount;
-                  const PMT = d.monthly_payment;
-                  const r = (d.interest_rate || 0) / 100 / 12;
+                  const P = parseFloat(d.remaining_amount) || 0;
+                  const PMT = parseFloat(d.monthly_payment);
+                  const r = (parseFloat(d.interest_rate) || 0) / 100 / 12;
                   let months = 0;
                   
-                  if (r === 0) {
+                  if (P <= 0) {
+                     return <p className="text-xs text-[#10B981] font-bold mt-5 pt-3 border-t border-[#2A2A2A]">🎉 Debt fully paid!</p>;
+                  } else if (r === 0) {
                     months = Math.ceil(P / PMT);
                   } else if ((P * r) >= PMT) {
                     return <p className="text-xs text-[#EF4444] font-bold mt-5 pt-3 border-t border-[#2A2A2A]">Payment too low to cover interest!</p>;
@@ -336,6 +339,8 @@ export default function Debts() {
                     months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
                   }
                   
+                  if (isNaN(months) || !isFinite(months) || months < 0) months = 0;
+
                   const payoffDate = new Date();
                   payoffDate.setMonth(payoffDate.getMonth() + months);
                   const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'short', year: 'numeric' });
@@ -402,17 +407,66 @@ export default function Debts() {
                 </div>
               </div>
 
+              {/* CRASH-PROOF DEBT FREE PROJECTOR IN MODAL */}
+              <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0A0A0A] border border-[#4FC3C3]/30 rounded-sm p-5 relative overflow-hidden group mb-6">
+                <TrendingDown size={64} className="absolute top-0 right-0 p-4 opacity-10 text-[#4FC3C3] group-hover:opacity-20 transition-opacity" />
+                <p className="text-[#4FC3C3] text-xs font-bold uppercase tracking-widest mb-1">Debt-Free Projection</p>
+                
+                {(!selectedDebt.monthly_payment || selectedDebt.monthly_payment <= 0) ? (
+                  <div className="mt-2">
+                    <p className="text-[#A3A3A3] text-sm">Configure a <span className="text-white font-bold">Monthly Payment</span> to see when you'll be debt-free!</p>
+                    <button onClick={(e) => { setDetailModalOpen(false); openEdit(selectedDebt, e); }} className="mt-3 text-xs bg-[#4FC3C3]/10 text-[#4FC3C3] px-3 py-1.5 rounded-sm hover:bg-[#4FC3C3]/20 font-bold transition-colors">
+                      Set Monthly Payment
+                    </button>
+                  </div>
+                ) : (
+                  (() => {
+                    const P = parseFloat(selectedDebt.remaining_amount) || 0;
+                    const PMT = parseFloat(selectedDebt.monthly_payment);
+                    const r = (parseFloat(selectedDebt.interest_rate) || 0) / 100 / 12;
+                    let months = 0;
+                    
+                    if (P <= 0) {
+                      return <p className="text-white font-black text-2xl mt-2">🎉 Debt fully paid!</p>;
+                    } else if (r === 0) {
+                      months = Math.ceil(P / PMT);
+                    } else if ((P * r) >= PMT) {
+                      return <p className="text-[#EF4444] font-bold mt-2">Monthly payment too low to cover interest!</p>;
+                    } else {
+                      months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
+                    }
+                    
+                    if (isNaN(months) || !isFinite(months) || months < 0) months = 0;
+                    
+                    const payoffDate = new Date();
+                    payoffDate.setMonth(payoffDate.getMonth() + months);
+                    const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'long', year: 'numeric' });
+                    
+                    return (
+                      <div className="mt-2">
+                        <h3 className="text-white font-black text-2xl mb-1 tracking-tight">🎯 {formattedDate}</h3>
+                        <p className="text-[#A3A3A3] text-sm">
+                          At {fmt(PMT)}/mo, you will be completely debt-free in <span className="text-white font-bold">{months} months</span>.
+                        </p>
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+
               {/* Progress Bar */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-bold text-white">Payment Progress</span>
                   <span className="text-sm text-[#10B981] font-bold">
-                    {((selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100).toFixed(1)}% Paid
+                    {selectedDebt.total_amount > 0 
+                      ? ((selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100).toFixed(1) 
+                      : 0}% Paid
                   </span>
                 </div>
                 <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden">
                   <div className="h-full rounded-full bg-[#10B981] transition-all duration-500" 
-                    style={{ width: `${(selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100}%` }} 
+                    style={{ width: `${selectedDebt.total_amount > 0 ? (selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100 : 0}%` }} 
                   />
                 </div>
                 <div className="flex justify-between mt-1 text-xs text-[#6B6B6B]">
@@ -421,6 +475,7 @@ export default function Debts() {
                 </div>
               </div>
 
+              {/* History Table */}
               <div className="border-t border-[#2A2A2A] pt-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-bold text-white uppercase tracking-widest">Transaction History</h3>

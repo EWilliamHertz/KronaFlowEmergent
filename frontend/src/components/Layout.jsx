@@ -8,18 +8,17 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 
-
 const navItems = [
-  { path: '/dashboard', icon: LayoutDashboard, key: 'nav.dashboard' },
-  { path: '/transactions', icon: Receipt, key: 'nav.transactions' },
-  { path: '/budgets', icon: PieChart, key: 'nav.budgets' },
-  { path: '/assets', icon: TrendingUp, key: 'nav.assets' },
-  { path: '/debts', icon: CreditCard, key: 'nav.debts' },
-  { name: 'Savings', icon: PiggyBank, path: '/savings' },
-  { path: '/invoices', icon: FileText, key: 'nav.invoices' },
-  { path: '/inventory', icon: Package, key: 'nav.inventory' },
-  { path: '/reports', icon: BarChart2, key: 'nav.reports' },
-  { path: '/settings', icon: Settings, key: 'nav.settings' },
+  { path: '/dashboard', icon: LayoutDashboard, key: 'nav.dashboard', label: 'Dashboard' },
+  { path: '/transactions', icon: Receipt, key: 'nav.transactions', label: 'Transactions' },
+  { path: '/budgets', icon: PieChart, key: 'nav.budgets', label: 'Budgets' },
+  { path: '/assets', icon: TrendingUp, key: 'nav.assets', label: 'Assets' },
+  { path: '/debts', icon: CreditCard, key: 'nav.debts', label: 'Debts' },
+  { path: '/savings', icon: PiggyBank, key: 'nav.savings', label: 'Savings Goals' }, // <-- ADDED SAVINGS TAB
+  { path: '/invoices', icon: FileText, key: 'nav.invoices', label: 'Invoices' },
+  { path: '/inventory', icon: Package, key: 'nav.inventory', label: 'Inventory' },
+  { path: '/reports', icon: BarChart2, key: 'nav.reports', label: 'Reports' },
+  { path: '/settings', icon: Settings, key: 'nav.settings', label: 'Settings' },
 ];
 
 export default function Layout() {
@@ -43,13 +42,14 @@ export default function Layout() {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        {/* Logo */}
+        {/* Logo with inverted colors to remove white background */}
         <div className="px-4 py-6 border-b border-[#2A2A2A] flex items-center justify-center relative">
           <img
             src="https://customer-assets.emergentagent.com/job_kronaflow-preview/artifacts/bv380685_IMG_3033.jpeg"
             alt="KronaFlow"
             className="h-24 w-auto object-contain"
-style={{ filter: 'invert(1) brightness(1.5)', mixBlendMode: 'screen' }}          />
+            style={{ filter: 'invert(1) brightness(1.5)', mixBlendMode: 'screen' }}
+          />
           <button className="lg:hidden absolute right-4 top-4 text-[#A3A3A3] hover:text-white" onClick={() => setSidebarOpen(false)}>
             <X size={18} />
           </button>
@@ -57,7 +57,7 @@ style={{ filter: 'invert(1) brightness(1.5)', mixBlendMode: 'screen' }}         
 
         {/* Nav Items */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ path, icon: Icon, key }) => (
+          {navItems.map(({ path, icon: Icon, key, label }) => (
             <NavLink
               key={path}
               to={path}
@@ -72,7 +72,8 @@ style={{ filter: 'invert(1) brightness(1.5)', mixBlendMode: 'screen' }}         
               }
             >
               <Icon size={17} />
-              <span>{t(key)}</span>
+              {/* Uses translation key, falls back to raw label if missing */}
+              <span>{t(key) || label}</span>
             </NavLink>
           ))}
         </nav>

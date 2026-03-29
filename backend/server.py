@@ -48,8 +48,8 @@ def to_dict(obj):
 engine = create_async_engine(
     DATABASE_URL, 
     echo=False,
-    pool_pre_ping=True,  # Checks if connection is alive before using it
-    poolclass=NullPool   # Disables pooling; vital for serverless environments
+    pool_pre_ping=True,
+    poolclass=NullPool
 )
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -77,7 +77,7 @@ class Transaction(Base):
     year = Column(Integer, nullable=False)
     recurring = Column(Boolean, default=False)
     recurrence = Column(String, nullable=True)
-    linked_debt_id = Column(String, nullable=True) # Fixed Indentation
+    linked_debt_id = Column(String, nullable=True)
 
 class Budget(Base):
     __tablename__ = "budgets"
@@ -152,6 +152,24 @@ class InventoryItem(Base):
     vat_pct = Column(Float, default=25.0)
     description = Column(String, nullable=True)
     low_stock_threshold = Column(Float, default=5.0)
+
+# --- NEW: SAVINGS MODELS ---
+class SavingsGoal(Base):
+    __tablename__ = "savings_goals"
+    id = Column(String, primary_key=True, default=lambda: f"svg_{uuid.uuid4().hex[:12]}")
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
+    name = Column(String, nullable=False)
+    target_amount = Column(Float, nullable=False)
+    target_date = Column(String, nullable=True)
+    icon = Column(String, default="🎯")
+
+class SavingsContribution(Base):
+    __tablename__ = "savings_contributions"
+    id = Column(String, primary_key=True, default=lambda: f"svc_{uuid.uuid4().hex[:12]}")
+    goal_id = Column(String, ForeignKey("savings_goals.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    contributor_name = Column(String, default="Me")
+    date = Column(String, nullable=False)
 
 # DB Dependency
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
@@ -292,14 +310,26 @@ class InventoryItemCreate(BaseModel):
 class AIInsightRequest(BaseModel):
     context: Optional[str] = None
 
+class SavingsGoalCreate(BaseModel):
+    name: str
+    target_amount: float
+    target_date: Optional[str] = None
+    icon: str = "🎯"
+
+class SavingsContributionCreate(BaseModel):
+    amount: float
+    contributor_name: str = "Me"
+    date: str
+
 # ==========================================
 # 4. APP SETUP & ROUTES
 # ==========================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Safe init on boot
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all, checkfirst=True)
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -312,6 +342,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- DB INIT ---
+
+@api_router.get("/init-db")
+async def init_db():
+    try:
+        # checkfirst=True prevents crash on existing tables, only adding missing ones (Savings)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+        return {"message": "All database tables (including Savings) checked and created perfectly!"}
+    except Exception as e:
+        return {"error": str(e)}
 
 # --- CATEGORIES ---
 
@@ -333,17 +375,6 @@ async def create_category(data: CategoryCreate, user: User = Depends(current_act
     await session.refresh(new_cat)
     return to_dict(new_cat)
 
-# --- DB INIT ---
-
-@api_router.get("/init-db")
-async def init_db():
-    try:
-        from backend.database import engine, Base
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        return {"message": "All database tables (including Savings) created perfectly!"}
-    except Exception as e:
-        return {"error": str(e)}
 # --- TRANSACTIONS ---
 
 @api_router.get("/transactions")
@@ -382,11 +413,8 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(curre
     )
     session.add(new_txn)
     
-    # --- NEW: AUTO-SCHEDULE FUTURE TRANSACTIONS (1 YEAR OUT) ---
     if data.recurring and data.recurrence:
-        # Determine how many future transactions to create to fill out 1 year
         occurrences = {'weekly': 52, 'biweekly': 26, 'monthly': 11, 'yearly': 1}.get(data.recurrence, 0)
-        
         for i in range(1, occurrences + 1):
             if data.recurrence == 'weekly':
                 next_date = date_obj + timedelta(days=7 * i)
@@ -396,7 +424,6 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(curre
                 m = date_obj.month - 1 + i
                 y = date_obj.year + m // 12
                 m = m % 12 + 1
-                # Safely handle end-of-month (e.g. Feb 31 -> Feb 28)
                 d = min(date_obj.day, calendar.monthrange(y, m)[1])
                 next_date = date_obj.replace(year=y, month=m, day=d)
             elif data.recurrence == 'yearly':
@@ -410,18 +437,6 @@ async def create_transaction(data: TransactionCreate, user: User = Depends(curre
             )
             session.add(future_txn)
 
-    await session.commit()
-    await session.refresh(new_txn)
-    return to_dict(new_txn)
-    try: date_obj = datetime.strptime(data.date[:10], "%Y-%m-%d")
-    except: date_obj = datetime.now(timezone.utc)
-    new_txn = Transaction(
-        user_id=user.id, type=data.type, amount=data.amount, currency=data.currency,
-        category=data.category, description=data.description, date=data.date[:10],
-        party=data.party, month=date_obj.month, year=date_obj.year,
-        recurring=data.recurring, recurrence=data.recurrence
-    )
-    session.add(new_txn)
     await session.commit()
     await session.refresh(new_txn)
     return to_dict(new_txn)
@@ -886,17 +901,8 @@ async def get_report_summary(period: str = "all", user: User = Depends(current_a
         mt = [t for t in all_txns if t.get("month") == m and t.get("year") == y]
         trend.append({"month": datetime(y, m, 1).strftime("%b %y"), "income": round(sum(t["amount"] for t in mt if t["type"] == "income"), 2), "expenses": round(sum(t["amount"] for t in mt if t["type"] == "expense"), 2)})
     return {"total_income": total_income, "total_expenses": total_expenses, "net": total_income - total_expenses, "transaction_count": len(txns), "by_category": by_category, "trend": trend, "period": period}
-# --- SAVINGS GOALS SCHEMAS & ROUTES ---
-class SavingsContributionCreate(BaseModel):
-    amount: float
-    contributor_name: str = "Me"
-    date: str
 
-class SavingsGoalCreate(BaseModel):
-    name: str
-    target_amount: float
-    target_date: Optional[str] = None
-    icon: str = "🎯"
+# --- SAVINGS GOALS ROUTES ---
 
 @api_router.get("/savings")
 async def get_savings(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
@@ -926,20 +932,26 @@ async def create_saving(data: SavingsGoalCreate, user: User = Depends(current_ac
     return {"status": "success"}
 
 @api_router.post("/savings/{goal_id}/contribute")
-async def contribute_saving(goal_id: int, data: SavingsContributionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+async def contribute_saving(goal_id: str, data: SavingsContributionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     new_contrib = SavingsContribution(goal_id=goal_id, amount=data.amount, contributor_name=data.contributor_name, date=data.date)
     session.add(new_contrib)
     await session.commit()
     return {"status": "success"}
 
 @api_router.delete("/savings/{goal_id}")
-async def delete_saving(goal_id: int, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+async def delete_saving(goal_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     result = await session.execute(select(SavingsGoal).where(SavingsGoal.id == goal_id, SavingsGoal.user_id == user.id))
     goal = result.scalars().first()
     if goal:
+        # Also delete associated contributions
+        c_result = await session.execute(select(SavingsContribution).where(SavingsContribution.goal_id == goal.id))
+        contribs = c_result.scalars().all()
+        for c in contribs:
+            await session.delete(c)
         await session.delete(goal)
         await session.commit()
     return {"status": "deleted"}
+
 # Register Routers
 app.include_router(api_router)
 app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/api/auth/jwt", tags=["auth"])

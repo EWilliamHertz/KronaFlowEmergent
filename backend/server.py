@@ -886,7 +886,60 @@ async def get_report_summary(period: str = "all", user: User = Depends(current_a
         mt = [t for t in all_txns if t.get("month") == m and t.get("year") == y]
         trend.append({"month": datetime(y, m, 1).strftime("%b %y"), "income": round(sum(t["amount"] for t in mt if t["type"] == "income"), 2), "expenses": round(sum(t["amount"] for t in mt if t["type"] == "expense"), 2)})
     return {"total_income": total_income, "total_expenses": total_expenses, "net": total_income - total_expenses, "transaction_count": len(txns), "by_category": by_category, "trend": trend, "period": period}
+# --- SAVINGS GOALS SCHEMAS & ROUTES ---
+class SavingsContributionCreate(BaseModel):
+    amount: float
+    contributor_name: str = "Me"
+    date: str
 
+class SavingsGoalCreate(BaseModel):
+    name: str
+    target_amount: float
+    target_date: Optional[str] = None
+    icon: str = "🎯"
+
+@api_router.get("/savings")
+async def get_savings(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(SavingsGoal).where(SavingsGoal.user_id == user.id))
+    goals = result.scalars().all()
+    data = []
+    for g in goals:
+        c_result = await session.execute(select(SavingsContribution).where(SavingsContribution.goal_id == g.id).order_by(SavingsContribution.date.desc()))
+        contribs = c_result.scalars().all()
+        total_saved = sum(c.amount for c in contribs)
+        data.append({
+            "id": g.id,
+            "name": g.name,
+            "target_amount": g.target_amount,
+            "target_date": g.target_date,
+            "icon": g.icon,
+            "total_saved": total_saved,
+            "contributions": [{"id": c.id, "amount": c.amount, "contributor_name": c.contributor_name, "date": c.date} for c in contribs]
+        })
+    return data
+
+@api_router.post("/savings")
+async def create_saving(data: SavingsGoalCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    new_goal = SavingsGoal(user_id=user.id, name=data.name, target_amount=data.target_amount, target_date=data.target_date, icon=data.icon)
+    session.add(new_goal)
+    await session.commit()
+    return {"status": "success"}
+
+@api_router.post("/savings/{goal_id}/contribute")
+async def contribute_saving(goal_id: int, data: SavingsContributionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    new_contrib = SavingsContribution(goal_id=goal_id, amount=data.amount, contributor_name=data.contributor_name, date=data.date)
+    session.add(new_contrib)
+    await session.commit()
+    return {"status": "success"}
+
+@api_router.delete("/savings/{goal_id}")
+async def delete_saving(goal_id: int, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(SavingsGoal).where(SavingsGoal.id == goal_id, SavingsGoal.user_id == user.id))
+    goal = result.scalars().first()
+    if goal:
+        await session.delete(goal)
+        await session.commit()
+    return {"status": "deleted"}
 # Register Routers
 app.include_router(api_router)
 app.include_router(fastapi_users.get_auth_router(auth_backend), prefix="/api/auth/jwt", tags=["auth"])

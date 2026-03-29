@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Receipt, PieChart, TrendingUp, CreditCard,
-  Settings, Menu, Bell, LogOut, Globe, X, FileText, Package, BarChart2
+  Settings, Menu, Bell, LogOut, Globe, X, FileText, Package, BarChart2, PiggyBank
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
+
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, key: 'nav.dashboard' },
@@ -14,6 +15,7 @@ const navItems = [
   { path: '/budgets', icon: PieChart, key: 'nav.budgets' },
   { path: '/assets', icon: TrendingUp, key: 'nav.assets' },
   { path: '/debts', icon: CreditCard, key: 'nav.debts' },
+  { name: 'Savings', icon: PiggyBank, path: '/savings' },
   { path: '/invoices', icon: FileText, key: 'nav.invoices' },
   { path: '/inventory', icon: Package, key: 'nav.inventory' },
   { path: '/reports', icon: BarChart2, key: 'nav.reports' },

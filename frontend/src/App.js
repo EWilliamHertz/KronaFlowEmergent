@@ -1,4 +1,5 @@
 
+
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -14,6 +15,7 @@ import Invoices from './pages/Invoices';
 import Inventory from './pages/Inventory';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Savings from './pages/Savings';
 import './App.css';
 
 function ProtectedLayout() {
@@ -49,6 +51,7 @@ function App() {
               <Route path="/budgets" element={<Budgets />} />
               <Route path="/assets" element={<Assets />} />
               <Route path="/debts" element={<Debts />} />
+              <Route path="/savings" element={<ProtectedRoute><Savings /></ProtectedRoute>} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/reports" element={<Reports />} />

@@ -30,3 +30,25 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_user_db(session: AsyncSession = Depends(get_async_session)):
     yield SQLAlchemyUserDatabase(session, User)
+
+class SavingsGoal(Base):
+    __tablename__ = "savings_goals"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String)
+    target_amount = Column(Float)
+    target_date = Column(String, nullable=True)
+    icon = Column(String, default="🎯")
+
+    contributions = relationship("SavingsContribution", back_populates="goal", cascade="all, delete-orphan")
+    user = relationship("User")
+
+class SavingsContribution(Base):
+    __tablename__ = "savings_contributions"
+    id = Column(Integer, primary_key=True, index=True)
+    goal_id = Column(Integer, ForeignKey("savings_goals.id"))
+    amount = Column(Float)
+    contributor_name = Column(String, default="Me")
+    date = Column(String)
+
+    goal = relationship("SavingsGoal", back_populates="contributions")

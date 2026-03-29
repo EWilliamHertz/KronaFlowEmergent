@@ -42,16 +42,14 @@ export default function Layout() {
         }`}
       >
         {/* Logo */}
-        <div className="px-4 py-4 border-b border-[#2A2A2A] flex items-center justify-between">
-          <div className="flex items-center">
-            <img
-              src="https://customer-assets.emergentagent.com/job_kronaflow-preview/artifacts/bv380685_IMG_3033.jpeg"
-              alt="KronaFlow"
-              className="h-14 w-auto object-contain"
-              style={{ mixBlendMode: 'multiply', filter: 'contrast(1.1)' }}
-            />
-          </div>
-          <button className="lg:hidden text-[#A3A3A3] hover:text-white" onClick={() => setSidebarOpen(false)}>
+        <div className="px-4 py-6 border-b border-[#2A2A2A] flex items-center justify-center relative">
+          <img
+            src="https://customer-assets.emergentagent.com/job_kronaflow-preview/artifacts/bv380685_IMG_3033.jpeg"
+            alt="KronaFlow"
+            className="h-24 w-auto object-contain"
+            style={{ mixBlendMode: 'lighten', filter: 'brightness(1.5) contrast(1.2)' }}
+          />
+          <button className="lg:hidden absolute right-4 top-4 text-[#A3A3A3] hover:text-white" onClick={() => setSidebarOpen(false)}>
             <X size={18} />
           </button>
         </div>

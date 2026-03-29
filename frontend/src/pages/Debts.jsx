@@ -308,12 +308,33 @@ export default function Debts() {
                     <div className="h-full rounded-full bg-[#10B981] transition-all duration-500" style={{ width: `${progress}%` }} />
                   </div>
                 </div>
-                {d.monthly_payment > 0 && (
-                  <p className="text-xs text-[#6B6B6B] mt-2">Monthly Payment: {fmt(d.monthly_payment)} {d.currency}</p>
-                )}
-                {d.interest_rate > 0 && (
-                  <p className="text-xs text-[#6B6B6B] mt-1">Interest: {d.interest_rate}%</p>
-                )}
+                {(() => {
+                  if (!d.monthly_payment || d.monthly_payment <= 0) return null;
+                  const P = d.remaining_amount;
+                  const PMT = d.monthly_payment;
+                  const r = (d.interest_rate || 0) / 100 / 12;
+                  let months = 0;
+                  
+                  if (r === 0) {
+                    months = Math.ceil(P / PMT);
+                  } else if ((P * r) >= PMT) {
+                    return <p className="text-xs text-[#EF4444] font-bold mt-3 bg-[#EF4444]/10 p-2 rounded-sm text-center">Payment too low for interest!</p>;
+                  } else {
+                    months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
+                  }
+                  
+                  const payoffDate = new Date();
+                  payoffDate.setMonth(payoffDate.getMonth() + months);
+                  const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'short', year: 'numeric' });
+                  
+                  return (
+                    <div className="mt-4 pt-3 border-t border-[#2A2A2A]">
+                      <p className="text-[10px] text-[#A3A3A3] uppercase tracking-widest font-bold mb-1">Debt-Free Projection</p>
+                      <p className="text-sm font-black text-[#4FC3C3]">🎯 {formattedDate}</p>
+                      <p className="text-[#6B6B6B] text-[10px]">At {fmt(PMT)} {d.currency}/mo ({months} mos)</p>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

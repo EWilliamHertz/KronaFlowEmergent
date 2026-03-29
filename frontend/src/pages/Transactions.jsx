@@ -477,7 +477,7 @@ export default function Transactions() {
 
       {/* Add/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md">
+        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white font-bold" style={{ fontFamily: 'Chivo, sans-serif' }}>
               {editing ? 'Edit Transaction' : 'Add Transaction'}
@@ -623,7 +623,7 @@ export default function Transactions() {
 
       {/* Bulk Edit Modal */}
       <Dialog open={bulkEditModal} onOpenChange={setBulkEditModal}>
-        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md">
+        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white font-bold" style={{ fontFamily: 'Chivo, sans-serif' }}>
               Bulk Edit Transactions ({selectedTxns.size})

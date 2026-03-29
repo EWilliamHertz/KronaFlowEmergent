@@ -438,9 +438,43 @@ export default function Debts() {
                 </div>
               )}
 
-              {/* Progress Bar */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
+              {/* NEW: DEBT FREE PROJECTOR */}
+              {selectedDebt.monthly_payment > 0 && (
+                <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0A0A0A] border border-[#4FC3C3]/30 rounded-sm p-5 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <TrendingDown size={64} className="text-[#4FC3C3]" />
+                  </div>
+                  <p className="text-[#4FC3C3] text-xs font-bold uppercase tracking-widest mb-1">Debt-Free Projection</p>
+                  
+                  {(() => {
+                    const P = selectedDebt.remaining_amount;
+                    const PMT = selectedDebt.monthly_payment;
+                    const r = (selectedDebt.interest_rate || 0) / 100 / 12;
+                    let months = 0;
+                    
+                    if (r === 0) {
+                      months = Math.ceil(P / PMT);
+                    } else if ((P * r) >= PMT) {
+                      return <p className="text-[#EF4444] font-bold">Monthly payment too low to cover interest!</p>;
+                    } else {
+                      months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
+                    }
+                    
+                    const payoffDate = new Date();
+                    payoffDate.setMonth(payoffDate.getMonth() + months);
+                    const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'long', year: 'numeric' });
+                    
+                    return (
+                      <div>
+                        <h3 className="text-white font-black text-2xl mb-1 tracking-tight">🎯 {formattedDate}</h3>
+                        <p className="text-[#A3A3A3] text-sm">
+                          At {fmt(PMT)} {selectedDebt.currency}/mo, you will be completely debt-free in <span className="text-white font-bold">{months} months</span>.
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
                   <p className="text-white text-sm font-bold">Payment Progress</p>
                   <span className="text-xs text-[#A3A3A3]">
                     {fmt(selectedDebt.total_amount - selectedDebt.remaining_amount)} / {fmt(selectedDebt.total_amount)}

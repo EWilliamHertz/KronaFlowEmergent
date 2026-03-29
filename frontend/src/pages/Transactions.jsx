@@ -579,8 +579,26 @@ export default function Transactions() {
               )}
             </div>
 
-            <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Description</label>
+            {/* NEW: RECURRING SECTION */}
+            <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.recurring} 
+                  onChange={e => setForm(f => ({ ...f, recurring: e.target.checked }))} 
+                  className="w-4 h-4 accent-[#4FC3C3] bg-[#0A0A0A] border-[#2A2A2A] rounded-sm cursor-pointer" 
+                />
+                <span className="text-sm font-bold text-white">Repeat this transaction</span>
+              </label>
+              {form.recurring && (
+                <div className="mt-3">
+                  <label className="text-xs font-bold uppercase tracking-widest text-[#A3A3A3] mb-1 block">Frequency</label>
+                  <select value={form.recurrence} onChange={e => setForm(f => ({ ...f, recurrence: e.target.value }))} 
+                    className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]">
+                    {RECURRENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <p className="text-[#6B6B6B] text-xs mt-2">This will automatically schedule transactions 1 year into the future.</p>
+                </div>
+              )}
+            </div>
               <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 placeholder="What was this for?" required 
                 className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"

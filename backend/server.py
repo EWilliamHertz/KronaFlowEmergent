@@ -366,6 +366,53 @@ async def get_transactions(
 
 @api_router.post("/transactions")
 async def create_transaction(data: TransactionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    from datetime import timedelta
+    import calendar
+
+    try: 
+        date_obj = datetime.strptime(data.date[:10], "%Y-%m-%d")
+    except: 
+        date_obj = datetime.now(timezone.utc)
+        
+    new_txn = Transaction(
+        user_id=user.id, type=data.type, amount=data.amount, currency=data.currency,
+        category=data.category, description=data.description, date=data.date[:10],
+        party=data.party, month=date_obj.month, year=date_obj.year,
+        recurring=data.recurring, recurrence=data.recurrence
+    )
+    session.add(new_txn)
+    
+    # --- NEW: AUTO-SCHEDULE FUTURE TRANSACTIONS (1 YEAR OUT) ---
+    if data.recurring and data.recurrence:
+        # Determine how many future transactions to create to fill out 1 year
+        occurrences = {'weekly': 52, 'biweekly': 26, 'monthly': 11, 'yearly': 1}.get(data.recurrence, 0)
+        
+        for i in range(1, occurrences + 1):
+            if data.recurrence == 'weekly':
+                next_date = date_obj + timedelta(days=7 * i)
+            elif data.recurrence == 'biweekly':
+                next_date = date_obj + timedelta(days=14 * i)
+            elif data.recurrence == 'monthly':
+                m = date_obj.month - 1 + i
+                y = date_obj.year + m // 12
+                m = m % 12 + 1
+                # Safely handle end-of-month (e.g. Feb 31 -> Feb 28)
+                d = min(date_obj.day, calendar.monthrange(y, m)[1])
+                next_date = date_obj.replace(year=y, month=m, day=d)
+            elif data.recurrence == 'yearly':
+                next_date = date_obj.replace(year=date_obj.year + i)
+                
+            future_txn = Transaction(
+                user_id=user.id, type=data.type, amount=data.amount, currency=data.currency,
+                category=data.category, description=data.description, date=next_date.strftime("%Y-%m-%d"),
+                party=data.party, month=next_date.month, year=next_date.year,
+                recurring=True, recurrence=data.recurrence
+            )
+            session.add(future_txn)
+
+    await session.commit()
+    await session.refresh(new_txn)
+    return to_dict(new_txn)
     try: date_obj = datetime.strptime(data.date[:10], "%Y-%m-%d")
     except: date_obj = datetime.now(timezone.utc)
     new_txn = Transaction(

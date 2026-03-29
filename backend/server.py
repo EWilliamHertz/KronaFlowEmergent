@@ -354,6 +354,25 @@ async def init_db():
     except Exception as e:
         return {"error": str(e)}
 
+@api_router.post("/migrate-savings-schema")
+async def migrate_savings_schema():
+    """Drop and recreate Savings tables to fix schema mismatches (integer vs uuid user_id)"""
+    try:
+        async with engine.begin() as conn:
+            # Drop tables with CASCADE to remove constraints
+            await conn.execute(text("DROP TABLE IF EXISTS savings_contributions CASCADE"))
+            await conn.execute(text("DROP TABLE IF EXISTS savings_goals CASCADE"))
+            
+            # Recreate with correct schema
+            await conn.run_sync(Base.metadata.create_all)
+        
+        return {
+            "status": "success",
+            "message": "Savings tables migrated successfully. user_id is now UUID type."
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # --- CATEGORIES ---
 
 @api_router.get("/categories")

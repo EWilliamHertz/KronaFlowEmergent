@@ -6,9 +6,9 @@ import {
 } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet, DollarSign, Plus, ArrowRight, X, Loader2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 import { API } from '../config/api';
+
 const CATEGORY_COLORS = {
   food: '#10B981', transport: '#3B82F6', housing: '#8B5CF6',
   entertainment: '#F59E0B', healthcare: '#EF4444', shopping: '#EC4899',
@@ -42,22 +42,17 @@ export default function Dashboard() {
   const [showAI, setShowAI] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
 
-// frontend/src/pages/Dashboard.jsx
+  useEffect(() => {
+    const token = localStorage.getItem('session_token');
+    axios.get(`${API}/dashboard/stats`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => setStats(res.data))
+      .catch(() => toast.error('Failed to load dashboard'))
+      .finally(() => setLoading(false));
+  }, []);
 
-useEffect(() => {
-  // 1. Get the token from storage
-  const token = localStorage.getItem('session_token');
-  
-  // 2. Pass it in the Authorization header
-  axios.get(`${API}/dashboard/stats`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  })
-    .then(res => setStats(res.data))
-    .catch(() => toast.error('Failed to load dashboard'))
-    .finally(() => setLoading(false));
-}, []);
-
-const getAiInsights = async () => {
+  const getAiInsights = async () => {
     setAiLoading(true);
     try {
       const token = localStorage.getItem('session_token');
@@ -174,23 +169,28 @@ const getAiInsights = async () => {
           </div>
           {stats?.budget_overview?.length > 0 ? (
             <div className="space-y-3.5">
-              {stats.budget_overview.slice(0, 5).map(b => (
+              {stats.budget_overview.slice(0, 5).map(b => {
+                // Safe percent calculation to prevent NaN
+                const safeAllocated = b.allocated > 0 ? b.allocated : 1;
+                const safePercent = b.allocated > 0 ? Math.round((b.spent / b.allocated) * 100) : 0;
+                
+                return (
                 <div key={b.category}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs text-[#A3A3A3] capitalize">{b.category}</span>
                     <span className="text-xs font-semibold tabular-nums" style={{
-                      color: b.percentage >= 90 ? '#EF4444' : b.percentage >= 70 ? '#F59E0B' : '#10B981'
-                    }}>{b.percentage}%</span>
+                      color: safePercent >= 90 ? '#EF4444' : safePercent >= 70 ? '#F59E0B' : '#10B981'
+                    }}>{safePercent}%</span>
                   </div>
                   <div className="h-1.5 bg-[#2A2A2A] rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-500" style={{
-                      width: `${Math.min(100, b.percentage)}%`,
-                      background: b.percentage >= 90 ? '#EF4444' : b.percentage >= 70 ? '#F59E0B' : '#4FC3C3'
+                      width: `${Math.min(100, safePercent)}%`,
+                      background: safePercent >= 90 ? '#EF4444' : safePercent >= 70 ? '#F59E0B' : '#4FC3C3'
                     }} />
                   </div>
                   <p className="text-[#6B6B6B] text-xs mt-1 tabular-nums">{fmt(b.spent)} / {fmt(b.allocated)} SEK</p>
                 </div>
-              ))}
+              )})}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-32 gap-2">

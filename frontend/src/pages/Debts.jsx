@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Plus, Pencil, Trash2, CheckCircle2, Loader2, Wallet } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, Loader2, Wallet, X, TrendingDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
-// 1. Import the centralized API config
 import { API } from '../config/api';
 
 const DEBT_TYPES = ['personal_loan', 'credit_card', 'mortgage', 'student_loan', 'car_loan', 'other'];
@@ -30,7 +29,6 @@ const TYPE_ICONS = {
 
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 
-// 2. Updated EMPTY state to match backend schema (name, total_amount, monthly_payment)
 const EMPTY = { 
   type: 'personal_loan', 
   name: '', 
@@ -53,8 +51,14 @@ export default function Debts() {
   const [paymentModal, setPaymentModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ debt_id: '', amount: '', date: new Date().toISOString().split('T')[0] });
   const [paymentLoading, setPaymentLoading] = useState(false);
+  
+  // Detail Modal State
+  const [detailModal, setDetailModal] = useState(false);
+  const [selectedDebt, setSelectedDebt] = useState(null);
+  const [debtTransactions, setDebtTransactions] = useState([]);
+  const [debtTransLoading, setDebtTransLoading] = useState(false);
 
-  // 3. Updated fetchDebts with Authorization header
+  // Fetch Debts
   const fetchDebts = useCallback(async () => {
     setLoading(true);
     try {
@@ -74,7 +78,26 @@ export default function Debts() {
 
   useEffect(() => { fetchDebts(); }, [fetchDebts]);
 
+  // Fetch Debt Transactions
+  const fetchDebtTransactions = useCallback(async (debtId) => {
+    setDebtTransLoading(true);
+    try {
+      const token = localStorage.getItem('session_token');
+      const res = await axios.get(`${API}/debts/${debtId}/transactions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const trans = extractArray(res.data, 'transactions');
+      setDebtTransactions(trans);
+    } catch (err) {
+      console.error('Failed to load debt transactions:', err);
+      setDebtTransactions([]);
+    } finally {
+      setDebtTransLoading(false);
+    }
+  }, []);
+
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
+  
   const openEdit = (d) => {
     setEditing(d);
     setForm({
@@ -89,7 +112,13 @@ export default function Debts() {
     setModalOpen(true);
   };
 
-  // 4. Updated handleSave with Authorization header and correct payload
+  const openDetail = (debt) => {
+    setSelectedDebt(debt);
+    setDetailModal(true);
+    fetchDebtTransactions(debt.id);
+  };
+
+  // Save debt
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -119,13 +148,12 @@ export default function Debts() {
     } finally { setSaving(false); }
   };
 
-  // 5. Updated handlePayment to use the correct endpoint and Authorization header
+  // Record payment
   const handlePayment = async (e) => {
     e.preventDefault();
     setPaymentLoading(true);
     try {
       const token = localStorage.getItem('session_token');
-      // Backend expects action: "payment" at /debts/{debt_id}/transaction
       await axios.post(`${API}/debts/${paymentForm.debt_id}/transaction`, {
         amount: parseFloat(paymentForm.amount),
         action: "payment",
@@ -138,6 +166,9 @@ export default function Debts() {
       setPaymentModal(false);
       setPaymentForm({ debt_id: '', amount: '', date: new Date().toISOString().split('T')[0] });
       fetchDebts();
+      if (selectedDebt) {
+        fetchDebtTransactions(selectedDebt.id);
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to record payment');
     } finally { setPaymentLoading(false); }
@@ -218,8 +249,9 @@ export default function Debts() {
             const color = TYPE_COLORS[d.type] || '#6B7280';
             const progress = d.total_amount > 0 ? ((d.total_amount - d.remaining_amount) / d.total_amount * 100) : 0;
             return (
-              <div key={d.id} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group relative"
+              <div key={d.id} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group relative cursor-pointer"
                 data-testid={`debt-card-${d.id}`}
+                onClick={() => openDetail(d)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2 flex-1">
@@ -231,14 +263,14 @@ export default function Debts() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => { setPaymentForm({ ...paymentForm, debt_id: d.id }); setPaymentModal(true); }} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors">
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={(e) => { e.stopPropagation(); setPaymentForm({ ...paymentForm, debt_id: d.id }); setPaymentModal(true); }} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors">
                       <CheckCircle2 size={13} />
                     </button>
-                    <button onClick={() => openEdit(d)} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
+                    <button onClick={(e) => { e.stopPropagation(); openEdit(d); }} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
                       <Pencil size={13} />
                     </button>
-                    <button onClick={() => handleDelete(d.id)} className="text-[#6B6B6B] hover:text-[#EF4444] p-1 transition-colors">
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(d.id); }} className="text-[#6B6B6B] hover:text-[#EF4444] p-1 transition-colors">
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -263,13 +295,14 @@ export default function Debts() {
                 {d.interest_rate > 0 && (
                   <p className="text-xs text-[#6B6B6B] mt-1">Interest: {d.interest_rate}%</p>
                 )}
+                <p className="text-xs text-[#4FC3C3] mt-3 font-semibold">Click to view details →</p>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Debt Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md">
           <DialogHeader>
@@ -335,6 +368,150 @@ export default function Debts() {
               </button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Debt Detail Modal */}
+      <Dialog open={detailModal} onOpenChange={setDetailModal}>
+        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader className="flex items-center justify-between">
+            <DialogTitle className="text-white font-bold text-lg flex items-center gap-2">
+              {selectedDebt && (
+                <>
+                  <span>{TYPE_ICONS[selectedDebt.type]}</span>
+                  {selectedDebt.name}
+                </>
+              )}
+            </DialogTitle>
+            <button onClick={() => setDetailModal(false)} className="text-[#6B6B6B] hover:text-white">
+              <X size={20} />
+            </button>
+          </DialogHeader>
+
+          {selectedDebt && (
+            <div className="space-y-6">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                  <p className="text-[#6B6B6B] text-xs mb-1">Debt Type</p>
+                  <p className="text-white font-bold capitalize">{selectedDebt.type.replace(/_/g, ' ')}</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                  <p className="text-[#6B6B6B] text-xs mb-1">Currency</p>
+                  <p className="text-white font-bold">{selectedDebt.currency}</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                  <p className="text-[#6B6B6B] text-xs mb-1">Total Amount</p>
+                  <p className="text-white font-bold text-lg">{fmt(selectedDebt.total_amount)} {selectedDebt.currency}</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                  <p className="text-[#6B6B6B] text-xs mb-1">Remaining</p>
+                  <p className="text-[#EF4444] font-bold text-lg">{fmt(selectedDebt.remaining_amount)} {selectedDebt.currency}</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                  <p className="text-[#6B6B6B] text-xs mb-1">Paid</p>
+                  <p className="text-[#10B981] font-bold text-lg">{fmt(selectedDebt.total_amount - selectedDebt.remaining_amount)} {selectedDebt.currency}</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                  <p className="text-[#6B6B6B] text-xs mb-1">Progress</p>
+                  <p className="text-[#4FC3C3] font-bold text-lg">
+                    {selectedDebt.total_amount > 0 ? ((selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100).toFixed(1) : 0}%
+                  </p>
+                </div>
+              </div>
+
+              {/* Interest & Payment Info */}
+              {(selectedDebt.interest_rate > 0 || selectedDebt.monthly_payment > 0) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {selectedDebt.interest_rate > 0 && (
+                    <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                      <p className="text-[#6B6B6B] text-xs mb-1">Interest Rate</p>
+                      <p className="text-white font-bold">{selectedDebt.interest_rate}%</p>
+                    </div>
+                  )}
+                  {selectedDebt.monthly_payment > 0 && (
+                    <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
+                      <p className="text-[#6B6B6B] text-xs mb-1">Monthly Payment</p>
+                      <p className="text-white font-bold">{fmt(selectedDebt.monthly_payment)} {selectedDebt.currency}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Progress Bar */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-white text-sm font-bold">Payment Progress</p>
+                  <span className="text-xs text-[#A3A3A3]">
+                    {fmt(selectedDebt.total_amount - selectedDebt.remaining_amount)} / {fmt(selectedDebt.total_amount)}
+                  </span>
+                </div>
+                <div className="h-3 bg-[#2A2A2A] rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-[#4FC3C3] to-[#10B981] transition-all duration-500" 
+                    style={{ width: `${selectedDebt.total_amount > 0 ? ((selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100) : 0}%` }} />
+                </div>
+              </div>
+
+              {/* Transactions History */}
+              <div>
+                <h3 className="text-white font-bold mb-3 flex items-center gap-2">
+                  <TrendingDown size={16} />
+                  Payment History
+                </h3>
+                {debtTransLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 size={16} className="animate-spin text-[#4FC3C3]" />
+                  </div>
+                ) : debtTransactions.length === 0 ? (
+                  <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-6 text-center">
+                    <p className="text-[#6B6B6B] text-sm">No payments recorded yet</p>
+                  </div>
+                ) : (
+                  <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-[#2A2A2A]">
+                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Amount</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Type</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {debtTransactions.map((trans, idx) => (
+                            <tr key={idx} className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A]/50 transition-colors">
+                              <td className="px-4 py-3 text-xs text-[#A3A3A3]">{trans.date || '—'}</td>
+                              <td className="px-4 py-3 text-xs font-bold text-[#10B981]">{fmt(trans.amount)} {selectedDebt.currency}</td>
+                              <td className="px-4 py-3 text-xs capitalize">
+                                <span className="px-2 py-0.5 rounded-sm bg-[#4FC3C3]/10 text-[#4FC3C3]">
+                                  {trans.action || trans.type || 'payment'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-[#6B6B6B]">{trans.note || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-[#2A2A2A]">
+                <button onClick={() => setDetailModal(false)}
+                  className="flex-1 py-2 rounded-sm border border-[#2A2A2A] text-[#A3A3A3] text-sm font-medium hover:bg-[#2A2A2A] transition-all">
+                  Close
+                </button>
+                <button onClick={() => { setPaymentForm({ ...paymentForm, debt_id: selectedDebt.id }); setPaymentModal(true); }}
+                  className="flex-1 py-2 rounded-sm bg-[#10B981] text-white text-sm font-bold hover:bg-[#059669] transition-all flex items-center justify-center gap-2">
+                  <CheckCircle2 size={13} />
+                  Record Payment
+                </button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

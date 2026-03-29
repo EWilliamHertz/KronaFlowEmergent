@@ -1,18 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Plus, Search, Pencil, Trash2, Loader2, BarChart2, RefreshCw } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Loader2, BarChart2, RefreshCw, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { API } from '../config/api';
 
-
 // Safe number formatter
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 const today = () => new Date().toISOString().split('T')[0];
 
-const EMPTY = { type: 'expense', amount: '', category: '', description: '', date: today(), party: '', currency: 'SEK', recurring: false, recurrence: 'monthly' };
+const EMPTY = { type: 'expense', amount: '', categories: [], description: '', date: today(), party: '', currency: 'SEK', recurring: false, recurrence: 'monthly' };
 
 const CATEGORY_COLORS = {
   food: '#10B981', transport: '#3B82F6', housing: '#8B5CF6',
@@ -57,6 +56,11 @@ export default function Transactions() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
 
+  // Bulk Edit State
+  const [selectedTxns, setSelectedTxns] = useState(new Set());
+  const [bulkEditModal, setBulkEditModal] = useState(false);
+  const [bulkForm, setBulkForm] = useState({ categories: [], date: today() });
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -83,6 +87,7 @@ export default function Transactions() {
       }
       if (!Array.isArray(data)) data = [];
       setTxns(data);
+      setSelectedTxns(new Set()); // Clear selections on refresh
     } catch (err) {
       console.error('Failed to load transactions:', err);
       toast.error(`Failed to load transactions`);
@@ -114,7 +119,7 @@ export default function Transactions() {
         const res = await axios.get(`${API}/categories`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-setCategories(Array.isArray(res.data) ? res.data : []);
+        setCategories(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
         console.error("Failed to fetch categories");
     }
@@ -135,11 +140,9 @@ setCategories(Array.isArray(res.data) ? res.data : []);
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        // Add new category to state and auto-select it in the form
         setCategories([...categories, res.data]);
-        setForm({ ...form, category: res.data.name });
+        setForm({ ...form, categories: [...form.categories, res.data.name] });
         
-        // Reset mini-form
         setNewCategoryName("");
         setIsAddingCategory(false);
         toast.success('Category created!');
@@ -153,7 +156,7 @@ setCategories(Array.isArray(res.data) ? res.data : []);
   const openEdit = (txn) => {
     setEditing(txn);
     setForm({
-      type: txn.type, amount: txn.amount, category: txn.category,
+      type: txn.type, amount: txn.amount, categories: Array.isArray(txn.categories) ? txn.categories : (txn.category ? [txn.category] : []),
       description: txn.description, date: txn.date, party: txn.party || '',
       currency: txn.currency || 'SEK',
       recurring: txn.recurring || false, recurrence: txn.recurrence || 'monthly'
@@ -162,10 +165,71 @@ setCategories(Array.isArray(res.data) ? res.data : []);
     setIsAddingCategory(false);
   };
 
+  const toggleTxnSelection = (id) => {
+    const newSelected = new Set(selectedTxns);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedTxns(newSelected);
+  };
+
+  const toggleAllTxns = () => {
+    if (selectedTxns.size === txns.length) {
+      setSelectedTxns(new Set());
+    } else {
+      setSelectedTxns(new Set(txns.map(t => t.id)));
+    }
+  };
+
+  const openBulkEdit = () => {
+    if (selectedTxns.size === 0) {
+      toast.error('Select at least one transaction');
+      return;
+    }
+    setBulkForm({ categories: [], date: today() });
+    setBulkEditModal(true);
+  };
+
+  const handleBulkSave = async (e) => {
+    e.preventDefault();
+    if (bulkForm.categories.length === 0) {
+      toast.error('Select at least one category to apply');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const token = localStorage.getItem('session_token');
+      const config = { headers: { 'Authorization': `Bearer ${token}` } };
+      
+      for (const txnId of selectedTxns) {
+        const txn = txns.find(t => t.id === txnId);
+        const payload = {
+          ...txn,
+          categories: bulkForm.categories,
+          date: bulkForm.date || txn.date,
+          amount: parseFloat(txn.amount)
+        };
+        await axios.put(`${API}/transactions/${txnId}`, payload, config);
+      }
+      
+      toast.success(`Updated ${selectedTxns.size} transactions`);
+      setBulkEditModal(false);
+      setSelectedTxns(new Set());
+      fetchTxns();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to bulk update');
+    } finally { 
+      setSaving(false); 
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.category) {
-        toast.error("Please select or create a category");
+    if (form.categories.length === 0) {
+        toast.error("Please select or create at least one category");
         return;
     }
     
@@ -173,6 +237,7 @@ setCategories(Array.isArray(res.data) ? res.data : []);
     try {
       const payload = {
         ...form,
+        categories: form.categories, // Array of categories
         amount: parseFloat(form.amount),
         recurring: form.recurring,
         recurrence: form.recurring ? form.recurrence : null,
@@ -214,12 +279,22 @@ setCategories(Array.isArray(res.data) ? res.data : []);
         <h1 className="text-2xl font-black text-white tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
           {t('transactions.title') || "Transactions"}
         </h1>
-        <button onClick={openAdd} data-testid="add-transaction-btn"
-          className="flex items-center gap-2 px-4 py-2 rounded-sm bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold hover:bg-[#3AA8A8] transition-all shadow-[0_0_10px_rgba(79,195,195,0.3)]"
-        >
-          <Plus size={15} />
-          Add Transaction
-        </button>
+        <div className="flex gap-2">
+          {selectedTxns.size > 0 && (
+            <button onClick={openBulkEdit}
+              className="flex items-center gap-2 px-4 py-2 rounded-sm bg-[#F59E0B] text-[#0A0A0A] text-sm font-bold hover:bg-[#DC2626] transition-all"
+            >
+              <Check size={15} />
+              Bulk Edit ({selectedTxns.size})
+            </button>
+          )}
+          <button onClick={openAdd} data-testid="add-transaction-btn"
+            className="flex items-center gap-2 px-4 py-2 rounded-sm bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold hover:bg-[#3AA8A8] transition-all shadow-[0_0_10px_rgba(79,195,195,0.3)]"
+          >
+            <Plus size={15} />
+            Add Transaction
+          </button>
+        </div>
       </div>
 
       {/* View Toggle + Filters */}
@@ -286,43 +361,64 @@ setCategories(Array.isArray(res.data) ? res.data : []);
               <table className="w-full" data-testid="transactions-table">
                 <thead>
                   <tr className="border-b border-[#2A2A2A]">
-                    {['Date','Description','Category','Party','Amount',''].map(h => (
+                    <th className="px-4 py-3 text-left">
+                      <input type="checkbox" checked={selectedTxns.size === txns.length} onChange={toggleAllTxns}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                    </th>
+                    {['Date','Description','Categories','Party','Amount',''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-widest text-[#6B6B6B]">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {txns.map(txn => (
-                    <tr key={txn.id} className="border-b border-[#2A2A2A] hover:bg-[#4FC3C3]/5 transition-colors">
-                      <td className="px-4 py-3 text-xs text-[#A3A3A3] tabular-nums whitespace-nowrap">{txn.date}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-white font-medium truncate max-w-[140px]">{txn.description}</span>
-                          {txn.recurring && (
-                            <span title={txn.recurrence} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm bg-[#4FC3C3]/10 text-[#4FC3C3] text-xs">
-                              <RefreshCw size={9} />
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded-sm text-xs font-medium capitalize"
-                          style={{ background: `${CATEGORY_COLORS[txn.category] || '#6B7280'}20`, color: CATEGORY_COLORS[txn.category] || '#6B7280' }}>
-                          {txn.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-[#A3A3A3]">{txn.party || '—'}</td>
-                      <td className={`px-4 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${txn.type === 'income' ? 'text-[#10B981]' : 'text-white'}`}>
-                        {txn.type === 'income' ? '+' : '-'}{fmt(txn.amount)} {txn.currency}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => openEdit(txn)} className="text-[#6B6B6B] hover:text-[#4FC3C3] transition-colors"><Pencil size={13} /></button>
-                          <button onClick={() => handleDelete(txn.id)} className="text-[#6B6B6B] hover:text-[#EF4444] transition-colors"><Trash2 size={13} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {txns.map(txn => {
+                    const catArray = Array.isArray(txn.categories) ? txn.categories : (txn.category ? [txn.category] : []);
+                    return (
+                      <tr key={txn.id} className={`border-b border-[#2A2A2A] transition-colors ${selectedTxns.has(txn.id) ? 'bg-[#4FC3C3]/10' : 'hover:bg-[#4FC3C3]/5'}`}>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={() => toggleTxnSelection(txn.id)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-xs text-[#A3A3A3] tabular-nums whitespace-nowrap">{txn.date}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-white font-medium truncate max-w-[140px]">{txn.description}</span>
+                            {txn.recurring && (
+                              <span title={txn.recurrence} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm bg-[#4FC3C3]/10 text-[#4FC3C3] text-xs">
+                                <RefreshCw size={9} />
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {catArray.length > 0 ? (
+                              catArray.map((cat, idx) => (
+                                <span key={idx} className="px-2 py-0.5 rounded-sm text-xs font-medium capitalize"
+                                  style={{ background: `${CATEGORY_COLORS[cat] || '#6B7280'}20`, color: CATEGORY_COLORS[cat] || '#6B7280' }}>
+                                  {cat}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-[#6B6B6B]">—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-[#A3A3A3]">{txn.party || '—'}</td>
+                        <td className={`px-4 py-3 text-sm font-bold tabular-nums whitespace-nowrap ${txn.type === 'income' ? 'text-[#10B981]' : 'text-white'}`}>
+                          {txn.type === 'income' ? '+' : '-'}{fmt(txn.amount)} {txn.currency}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => openEdit(txn)} className="text-[#6B6B6B] hover:text-[#4FC3C3] transition-colors"><Pencil size={13} /></button>
+                            <button onClick={() => handleDelete(txn.id)} className="text-[#6B6B6B] hover:text-[#EF4444] transition-colors"><Trash2 size={13} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -330,7 +426,7 @@ setCategories(Array.isArray(res.data) ? res.data : []);
         </div>
       )}
 
-      {/* Stats View */}
+      {/* Stats View - unchanged from original */}
       {view === 'stats' && (
         <div className="space-y-4">
           {!stats ? (
@@ -400,7 +496,7 @@ setCategories(Array.isArray(res.data) ? res.data : []);
             {/* Type Toggle */}
             <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden">
               {['expense','income'].map(tp => (
-                <button key={tp} type="button" onClick={() => setForm(f => ({ ...f, type: tp, category: '' }))}
+                <button key={tp} type="button" onClick={() => setForm(f => ({ ...f, type: tp, categories: [] }))}
                   className={`flex-1 py-2 text-xs font-bold capitalize transition-all ${form.type === tp ? 'bg-[#4FC3C3] text-[#0A0A0A]' : 'bg-transparent text-[#A3A3A3] hover:text-white'}`}
                 >
                   {tp}
@@ -424,19 +520,27 @@ setCategories(Array.isArray(res.data) ? res.data : []);
               </div>
             </div>
 
-            {/* DYNAMIC CATEGORY SECTION */}
+            {/* MULTI-CATEGORY SECTION */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Category</label>
-              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"
-              >
-                <option value="">Select a category...</option>
-            {(Array.isArray(categories) ? categories : [])
-    .filter(c => c.type === form.type)
-                    .map(cat => (
-                        <option key={cat.id} value={cat.name} className="bg-[#1A1A1A] capitalize">{cat.name}</option>
-                ))}
-              </select>
+              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-2 block">Categories (Select Multiple)</label>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {(Array.isArray(categories) ? categories : [])
+                  .filter(c => c.type === form.type)
+                  .map(cat => (
+                    <label key={cat.id} className="flex items-center gap-2 p-2 hover:bg-[#0A0A0A] rounded-sm cursor-pointer">
+                      <input type="checkbox" checked={form.categories.includes(cat.name)} onChange={(e) => {
+                        if (e.target.checked) {
+                          setForm(f => ({ ...f, categories: [...f.categories, cat.name] }));
+                        } else {
+                          setForm(f => ({ ...f, categories: f.categories.filter(c => c !== cat.name) }));
+                        }
+                      }}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-sm text-white capitalize">{cat.name}</span>
+                    </label>
+                  ))}
+              </div>
 
               {!isAddingCategory ? (
                 <button 
@@ -498,6 +602,58 @@ setCategories(Array.isArray(res.data) ? res.data : []);
                 className="flex-1 py-2 rounded-sm bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold hover:bg-[#3AA8A8] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                 {saving && <Loader2 size={13} className="animate-spin" />}
                 Save Transaction
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Edit Modal */}
+      <Dialog open={bulkEditModal} onOpenChange={setBulkEditModal}>
+        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white font-bold" style={{ fontFamily: 'Chivo, sans-serif' }}>
+              Bulk Edit Transactions ({selectedTxns.size})
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleBulkSave} className="space-y-4">
+            
+            <div>
+              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-2 block">Update Categories (Optional)</label>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {(Array.isArray(categories) ? categories : []).map(cat => (
+                  <label key={cat.id} className="flex items-center gap-2 p-2 hover:bg-[#0A0A0A] rounded-sm cursor-pointer">
+                    <input type="checkbox" checked={bulkForm.categories.includes(cat.name)} onChange={(e) => {
+                      if (e.target.checked) {
+                        setBulkForm(f => ({ ...f, categories: [...f.categories, cat.name] }));
+                      } else {
+                        setBulkForm(f => ({ ...f, categories: f.categories.filter(c => c !== cat.name) }));
+                      }
+                    }}
+                      className="w-4 h-4 cursor-pointer"
+                    />
+                    <span className="text-sm text-white capitalize">{cat.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Update Date (Optional)</label>
+              <input type="date" value={bulkForm.date} onChange={e => setBulkForm(f => ({ ...f, date: e.target.value }))}
+                className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] [color-scheme:dark]"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t border-[#2A2A2A]">
+              <button type="button" onClick={() => setBulkEditModal(false)}
+                className="flex-1 py-2 rounded-sm border border-[#2A2A2A] text-[#A3A3A3] text-sm font-medium hover:bg-[#2A2A2A] transition-all">
+                Cancel
+              </button>
+              <button type="submit" disabled={saving}
+                className="flex-1 py-2 rounded-sm bg-[#F59E0B] text-[#0A0A0A] text-sm font-bold hover:bg-[#DC2626] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                {saving && <Loader2 size={13} className="animate-spin" />}
+                Apply Changes
               </button>
             </div>
           </form>

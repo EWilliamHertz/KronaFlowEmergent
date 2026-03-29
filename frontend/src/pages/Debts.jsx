@@ -269,47 +269,60 @@ export default function Debts() {
             return (
               <div key={d.id} 
                 onClick={() => openDetails(d)}
-                className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group relative cursor-pointer"
+                className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group relative cursor-pointer flex flex-col justify-between"
                 data-testid={`debt-card-${d.id}`}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2 flex-1">
-                    <span className="text-xl">{TYPE_ICONS[d.type]}</span>
+                <div>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-xl">{TYPE_ICONS[d.type]}</span>
+                      <div>
+                        <p className="text-white text-sm font-bold">{d.name}</p>
+                        <span className="text-xs px-1.5 py-0.5 rounded-sm" style={{ background: `${color}20`, color }}>
+                          {d.type.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={(e) => openPayment(d.id, e)} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors" title="Record Payment">
+                        <CheckCircle2 size={13} />
+                      </button>
+                      <button onClick={(e) => openEdit(d, e)} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={(e) => handleDelete(d.id, e)} className="text-[#6B6B6B] hover:text-[#EF4444] p-1 transition-colors">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
                     <div>
-                      <p className="text-white text-sm font-bold">{d.name}</p>
-                      <span className="text-xs px-1.5 py-0.5 rounded-sm" style={{ background: `${color}20`, color }}>
-                        {d.type.replace(/_/g, ' ')}
-                      </span>
+                      <div className="flex items-end justify-between mb-1">
+                        <p className="text-[#6B6B6B] text-xs">Remaining</p>
+                        <span className="text-xs text-[#A3A3A3]">{progress.toFixed(0)}% paid</span>
+                      </div>
+                      <p className="text-white font-bold tabular-nums text-lg">{fmt(d.remaining_amount)} <span className="text-sm text-[#A3A3A3]">{d.currency}</span></p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => openPayment(d.id, e)} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors" title="Record Payment">
-                      <CheckCircle2 size={13} />
-                    </button>
-                    <button onClick={(e) => openEdit(d, e)} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
-                      <Pencil size={13} />
-                    </button>
-                    <button onClick={(e) => handleDelete(d.id, e)} className="text-[#6B6B6B] hover:text-[#EF4444] p-1 transition-colors">
-                      <Trash2 size={13} />
-                    </button>
+
+                    <div className="h-1.5 bg-[#2A2A2A] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-[#10B981] transition-all duration-500" style={{ width: `${progress}%` }} />
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <div>
-                    <div className="flex items-end justify-between mb-1">
-                      <p className="text-[#6B6B6B] text-xs">Remaining</p>
-                      <span className="text-xs text-[#A3A3A3]">{progress.toFixed(0)}% paid</span>
-                    </div>
-                    <p className="text-white font-bold tabular-nums text-lg">{fmt(d.remaining_amount)} <span className="text-sm text-[#A3A3A3]">{d.currency}</span></p>
-                  </div>
-
-                  <div className="h-1.5 bg-[#2A2A2A] rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-[#10B981] transition-all duration-500" style={{ width: `${progress}%` }} />
-                  </div>
-                </div>
+                {/* DEBT FREE PROJECTOR */}
                 {(() => {
-                  if (!d.monthly_payment || d.monthly_payment <= 0) return null;
+                  if (!d.monthly_payment || d.monthly_payment <= 0) {
+                    return (
+                      <div className="mt-5 pt-3 border-t border-[#2A2A2A]">
+                        <button onClick={(e) => openEdit(d, e)} className="text-xs text-[#4FC3C3] hover:underline flex items-center gap-1">
+                          Set monthly payment to see debt-free date &rarr;
+                        </button>
+                      </div>
+                    );
+                  }
+
                   const P = d.remaining_amount;
                   const PMT = d.monthly_payment;
                   const r = (d.interest_rate || 0) / 100 / 12;
@@ -318,7 +331,7 @@ export default function Debts() {
                   if (r === 0) {
                     months = Math.ceil(P / PMT);
                   } else if ((P * r) >= PMT) {
-                    return <p className="text-xs text-[#EF4444] font-bold mt-3 bg-[#EF4444]/10 p-2 rounded-sm text-center">Payment too low for interest!</p>;
+                    return <p className="text-xs text-[#EF4444] font-bold mt-5 pt-3 border-t border-[#2A2A2A]">Payment too low to cover interest!</p>;
                   } else {
                     months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
                   }
@@ -328,10 +341,12 @@ export default function Debts() {
                   const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'short', year: 'numeric' });
                   
                   return (
-                    <div className="mt-4 pt-3 border-t border-[#2A2A2A]">
+                    <div className="mt-5 pt-3 border-t border-[#2A2A2A]">
                       <p className="text-[10px] text-[#A3A3A3] uppercase tracking-widest font-bold mb-1">Debt-Free Projection</p>
-                      <p className="text-sm font-black text-[#4FC3C3]">🎯 {formattedDate}</p>
-                      <p className="text-[#6B6B6B] text-[10px]">At {fmt(PMT)} {d.currency}/mo ({months} mos)</p>
+                      <div className="flex items-end justify-between">
+                        <p className="text-sm font-black text-[#4FC3C3]">🎯 {formattedDate}</p>
+                        <p className="text-[#6B6B6B] text-[10px]">At {fmt(PMT)}/mo ({months} mos)</p>
+                      </div>
                     </div>
                   );
                 })()}
@@ -386,44 +401,6 @@ export default function Debts() {
                   <p className="text-white font-semibold text-sm tabular-nums">{fmt(selectedDebt.monthly_payment)} {selectedDebt.currency}</p>
                 </div>
               </div>
-
-              {/* NEW: DEBT FREE PROJECTOR */}
-              {selectedDebt.monthly_payment > 0 && (
-                <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0A0A0A] border border-[#4FC3C3]/30 rounded-sm p-5 relative overflow-hidden group mb-6">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <TrendingDown size={64} className="text-[#4FC3C3]" />
-                  </div>
-                  <p className="text-[#4FC3C3] text-xs font-bold uppercase tracking-widest mb-1">Debt-Free Projection</p>
-                  
-                  {(() => {
-                    const P = selectedDebt.remaining_amount;
-                    const PMT = selectedDebt.monthly_payment;
-                    const r = (selectedDebt.interest_rate || 0) / 100 / 12;
-                    let months = 0;
-                    
-                    if (r === 0) {
-                      months = Math.ceil(P / PMT);
-                    } else if ((P * r) >= PMT) {
-                      return <p className="text-[#EF4444] font-bold">Monthly payment too low to cover interest!</p>;
-                    } else {
-                      months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
-                    }
-                    
-                    const payoffDate = new Date();
-                    payoffDate.setMonth(payoffDate.getMonth() + months);
-                    const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'long', year: 'numeric' });
-                    
-                    return (
-                      <div>
-                        <h3 className="text-white font-black text-2xl mb-1 tracking-tight">🎯 {formattedDate}</h3>
-                        <p className="text-[#A3A3A3] text-sm">
-                          At {fmt(PMT)} {selectedDebt.currency}/mo, you will be completely debt-free in <span className="text-white font-bold">{months} months</span>.
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
 
               {/* Progress Bar */}
               <div className="mb-6">

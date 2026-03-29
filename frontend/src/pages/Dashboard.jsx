@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, DollarSign, Plus, ArrowRight, X, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, DollarSign, Plus, ArrowRight, X, Loader2, AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { API } from '../config/api';
@@ -89,8 +89,14 @@ export default function Dashboard() {
     { label: t('dashboard.netWorth'), value: `${fmt(stats?.net_worth)} SEK`, icon: DollarSign, color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' },
   ];
 
+  // Detect any categories that are 90% or more spent
+  const overBudgetCategories = stats?.budget_overview?.filter(b => {
+    const pct = b.allocated > 0 ? (b.spent / b.allocated) * 100 : 0;
+    return pct >= 90;
+  }) || [];
+
   return (
-    <div className="space-y-5" data-testid="dashboard-page">
+    <div className="space-y-5 relative" data-testid="dashboard-page">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -110,6 +116,22 @@ export default function Dashboard() {
           {t('dashboard.aiInsights')}
         </button>
       </div>
+
+      {/* SMART BUDGET ALERTS BANNER */}
+      {overBudgetCategories.length > 0 && (
+        <div className="bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-sm p-4 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="text-[#EF4444] shrink-0 mt-0.5" size={18} />
+          <div>
+            <h4 className="text-[#EF4444] font-bold text-sm">Budget Attention Needed</h4>
+            <p className="text-[#A3A3A3] text-xs mt-1 leading-relaxed">
+              You are approaching or exceeding your limits for: 
+              <span className="text-white font-semibold ml-1 capitalize">
+                {overBudgetCategories.map(b => b.category).join(', ')}
+              </span>
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-testid="stat-cards">
@@ -170,8 +192,6 @@ export default function Dashboard() {
           {stats?.budget_overview?.length > 0 ? (
             <div className="space-y-3.5">
               {stats.budget_overview.slice(0, 5).map(b => {
-                // Safe percent calculation to prevent NaN
-                const safeAllocated = b.allocated > 0 ? b.allocated : 1;
                 const safePercent = b.allocated > 0 ? Math.round((b.spent / b.allocated) * 100) : 0;
                 
                 return (
@@ -263,6 +283,15 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* GLOBAL QUICK ADD FAB */}
+      <button 
+        onClick={() => navigate('/transactions')} 
+        title="Quick Add Transaction"
+        className="fixed bottom-8 right-8 w-14 h-14 bg-[#4FC3C3] text-[#0A0A0A] rounded-full shadow-[0_0_20px_rgba(79,195,195,0.3)] flex items-center justify-center hover:scale-105 hover:bg-[#3AA8A8] transition-all duration-200 z-40"
+      >
+        <Plus size={24} strokeWidth={3} />
+      </button>
 
       {/* AI Insights Modal */}
       {showAI && (

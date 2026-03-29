@@ -47,8 +47,7 @@ export default function Login() {
           src="https://customer-assets.emergentagent.com/job_kronaflow-preview/artifacts/bv380685_IMG_3033.jpeg"
           alt="KronaFlow"
           className="h-10 w-auto object-contain"
-          style={{ mixBlendMode: 'lighten', filter: 'brightness(1.5) contrast(1.2)' }}
-        />
+style={{ filter: 'invert(1) brightness(1.5)', mixBlendMode: 'screen' }}        />
         <button onClick={scrollToAuth} className="text-sm font-bold text-[#4FC3C3] hover:text-white transition-colors">
           Sign In
         </button>

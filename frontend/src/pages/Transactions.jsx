@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Plus, Search, Pencil, Trash2, Loader2, BarChart2, RefreshCw, Check } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { API } from '../config/api';
 
-// Safe number formatter
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -51,12 +50,10 @@ export default function Transactions() {
   const [stats, setStats] = useState(null);
   const [statPeriod, setStatPeriod] = useState('');
   
-  // Dynamic Categories State
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
 
-  // Bulk Edit State
   const [selectedTxns, setSelectedTxns] = useState(new Set());
   const [bulkEditModal, setBulkEditModal] = useState(false);
   const [bulkForm, setBulkForm] = useState({ categories: [], date: today() });
@@ -66,7 +63,6 @@ export default function Transactions() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  // Fetch Transactions
   const fetchTxns = useCallback(async () => {
     setLoading(true);
     try {
@@ -87,9 +83,8 @@ export default function Transactions() {
       }
       if (!Array.isArray(data)) data = [];
       setTxns(data);
-      setSelectedTxns(new Set()); // Clear selections on refresh
+      setSelectedTxns(new Set());
     } catch (err) {
-      console.error('Failed to load transactions:', err);
       toast.error(`Failed to load transactions`);
       setTxns([]);
     } finally { 
@@ -97,7 +92,6 @@ export default function Transactions() {
     }
   }, [filter]);
 
-  // Fetch Stats
   const fetchStats = useCallback(async () => {
     try {
       const params = PERIOD_PARAMS[statPeriod] || {};
@@ -112,7 +106,6 @@ export default function Transactions() {
     }
   }, [statPeriod]);
 
-  // Fetch Categories
   const fetchCategories = useCallback(async () => {
     try {
         const token = localStorage.getItem('session_token');
@@ -128,7 +121,6 @@ export default function Transactions() {
   useEffect(() => { fetchTxns(); fetchCategories(); }, [fetchTxns, fetchCategories]);
   useEffect(() => { if (view === 'stats') fetchStats(); }, [view, fetchStats]);
 
-  // Create new Category
   const handleCreateCategory = async (type) => {
     if (!newCategoryName.trim()) return;
     try {
@@ -156,7 +148,7 @@ export default function Transactions() {
   const openEdit = (txn) => {
     setEditing(txn);
     setForm({
-      type: txn.type, amount: txn.amount, categories: Array.isArray(txn.categories) ? txn.categories : (txn.category ? [txn.category] : []),
+      type: txn.type, amount: txn.amount, categories: Array.isArray(txn.categories) ? txn.categories : (txn.category ? txn.category.split(',').map(s => s.trim()) : []),
       description: txn.description, date: txn.date, party: txn.party || '',
       currency: txn.currency || 'SEK',
       recurring: txn.recurring || false, recurrence: txn.recurrence || 'monthly'
@@ -208,7 +200,6 @@ export default function Transactions() {
         const txn = txns.find(t => t.id === txnId);
         const payload = {
           ...txn,
-          // Convert the array into a single string for the backend
           category: bulkForm.categories.length > 0 ? bulkForm.categories.join(', ') : txn.category,
           date: bulkForm.date || txn.date,
           amount: parseFloat(txn.amount)
@@ -238,7 +229,6 @@ export default function Transactions() {
     try {
       const payload = {
         ...form,
-        // Convert the array into a single string for the backend
         category: form.categories.length > 0 ? form.categories.join(', ') : 'other',
         amount: parseFloat(form.amount),
         recurring: form.recurring,
@@ -368,14 +358,14 @@ export default function Transactions() {
                         className="w-4 h-4 cursor-pointer"
                       />
                     </th>
-                    {['Date','Description','Categories','Party','Amount',''].map(h => (
+                    {['Date','Description','Category','Party','Amount',''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-widest text-[#6B6B6B]">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {txns.map(txn => {
-                    const catArray = Array.isArray(txn.categories) ? txn.categories : (txn.category ? [txn.category] : []);
+                    const catArray = Array.isArray(txn.categories) ? txn.categories : (txn.category ? txn.category.split(',').map(s => s.trim()) : []);
                     return (
                       <tr key={txn.id} className={`border-b border-[#2A2A2A] transition-colors ${selectedTxns.has(txn.id) ? 'bg-[#4FC3C3]/10' : 'hover:bg-[#4FC3C3]/5'}`}>
                         <td className="px-4 py-3">
@@ -428,7 +418,7 @@ export default function Transactions() {
         </div>
       )}
 
-      {/* Stats View - unchanged from original */}
+      {/* Stats View */}
       {view === 'stats' && (
         <div className="space-y-4">
           {!stats ? (
@@ -599,6 +589,9 @@ export default function Transactions() {
                 </div>
               )}
             </div>
+
+            <div>
+              <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Description</label>
               <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 placeholder="What was this for?" required 
                 className="w-full px-3 py-2 bg-[#0A0A0A] border border-[#2A2A2A] text-white rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-[#4FC3C3]"

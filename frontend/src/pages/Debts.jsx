@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Plus, Pencil, Trash2, CheckCircle2, Loader2, Wallet, X, TrendingDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, Loader2, Wallet, TrendingDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
-import { extractArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
 import { API } from '../config/api';
 
@@ -52,13 +51,12 @@ export default function Debts() {
   const [paymentForm, setPaymentForm] = useState({ debt_id: '', amount: '', date: new Date().toISOString().split('T')[0] });
   const [paymentLoading, setPaymentLoading] = useState(false);
   
-  // Detail Modal State
-  const [detailModal, setDetailModal] = useState(false);
+  // Debt Details State
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedDebt, setSelectedDebt] = useState(null);
   const [debtTransactions, setDebtTransactions] = useState([]);
   const [debtTransLoading, setDebtTransLoading] = useState(false);
 
-  // Fetch Debts
   const fetchDebts = useCallback(async () => {
     setLoading(true);
     try {
@@ -68,17 +66,19 @@ export default function Debts() {
         params,
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      setDebts(extractArray(res.data, 'debts'));
+      let data = res.data;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        data = data.debts || data.data || [];
+      }
+      if (!Array.isArray(data)) data = [];
+      setDebts(data);
     } catch (err) { 
-      console.error('Failed to load debts:', err);
       toast.error('Failed to load debts'); 
+      setDebts([]);
     }
     finally { setLoading(false); }
   }, [activeType]);
 
-  useEffect(() => { fetchDebts(); }, [fetchDebts]);
-
-// Fetch Debt Transactions (Uses the single debt endpoint from server.py)
   const fetchDebtTransactions = useCallback(async (debtId) => {
     setDebtTransLoading(true);
     try {
@@ -86,7 +86,6 @@ export default function Debts() {
       const res = await axios.get(`${API}/debts/${debtId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      // The backend attaches the history under the "history" key
       const trans = res.data.history || [];
       setDebtTransactions(trans);
     } catch (err) {
@@ -96,9 +95,12 @@ export default function Debts() {
       setDebtTransLoading(false);
     }
   }, []);
+
+  useEffect(() => { fetchDebts(); }, [fetchDebts]);
+
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
-  
-  const openEdit = (d) => {
+  const openEdit = (d, e) => {
+    if (e) e.stopPropagation();
     setEditing(d);
     setForm({
       type: d.type,
@@ -112,13 +114,18 @@ export default function Debts() {
     setModalOpen(true);
   };
 
-  const openDetail = (debt) => {
-    setSelectedDebt(debt);
-    setDetailModal(true);
-    fetchDebtTransactions(debt.id);
+  const openPayment = (id, e) => {
+    if (e) e.stopPropagation();
+    setPaymentForm({ ...paymentForm, debt_id: id });
+    setPaymentModal(true);
   };
 
-  // Save debt
+  const openDetails = (d) => {
+    setSelectedDebt(d);
+    setDetailModalOpen(true);
+    fetchDebtTransactions(d.id);
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -143,12 +150,16 @@ export default function Debts() {
       }
       setModalOpen(false);
       fetchDebts();
+      
+      if (detailModalOpen && selectedDebt && (selectedDebt.id === editing?.id)) {
+        const res = await axios.get(`${API}/debts/${editing.id}`, config);
+        setSelectedDebt(res.data);
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to save');
     } finally { setSaving(false); }
   };
 
-  // Record payment
   const handlePayment = async (e) => {
     e.preventDefault();
     setPaymentLoading(true);
@@ -166,15 +177,19 @@ export default function Debts() {
       setPaymentModal(false);
       setPaymentForm({ debt_id: '', amount: '', date: new Date().toISOString().split('T')[0] });
       fetchDebts();
-      if (selectedDebt) {
-        fetchDebtTransactions(selectedDebt.id);
+      
+      if (detailModalOpen && selectedDebt && selectedDebt.id === paymentForm.debt_id) {
+        fetchDebtTransactions(paymentForm.debt_id);
+        const res = await axios.get(`${API}/debts/${paymentForm.debt_id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        setSelectedDebt(res.data);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to record payment');
     } finally { setPaymentLoading(false); }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, e) => {
+    if (e) e.stopPropagation();
     if (!window.confirm('Delete this debt?')) return;
     try {
       const token = localStorage.getItem('session_token');
@@ -183,6 +198,9 @@ export default function Debts() {
       });
       toast.success('Debt deleted');
       fetchDebts();
+      if (detailModalOpen && selectedDebt && selectedDebt.id === id) {
+        setDetailModalOpen(false);
+      }
     } catch { toast.error('Failed to delete'); }
   };
 
@@ -194,13 +212,13 @@ export default function Debts() {
     <div className="space-y-5" data-testid="debts-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-black text-white tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
-          {t('debts.title')}
+          {t('debts.title') || 'Debts'}
         </h1>
         <button onClick={openAdd} data-testid="add-debt-btn"
           className="flex items-center gap-2 px-4 py-2 rounded-sm bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold hover:bg-[#3AA8A8] transition-all shadow-[0_0_10px_rgba(79,195,195,0.3)]"
         >
           <Plus size={15} />
-          {t('debts.addDebt')}
+          {t('debts.addDebt') || 'Add Debt'}
         </button>
       </div>
 
@@ -240,8 +258,8 @@ export default function Debts() {
       ) : safeArray.length === 0 ? (
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-12 flex flex-col items-center gap-3">
           <Wallet size={36} className="text-[#2A2A2A]" />
-          <p className="text-[#6B6B6B] text-sm">{t('debts.noDebts')}</p>
-          <button onClick={openAdd} className="text-[#4FC3C3] text-xs font-semibold hover:underline">{t('debts.addDebt')}</button>
+          <p className="text-[#6B6B6B] text-sm">{t('debts.noDebts') || 'No debts found.'}</p>
+          <button onClick={openAdd} className="text-[#4FC3C3] text-xs font-semibold hover:underline">{t('debts.addDebt') || 'Add one now'}</button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="debt-cards">
@@ -249,9 +267,10 @@ export default function Debts() {
             const color = TYPE_COLORS[d.type] || '#6B7280';
             const progress = d.total_amount > 0 ? ((d.total_amount - d.remaining_amount) / d.total_amount * 100) : 0;
             return (
-              <div key={d.id} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group relative cursor-pointer"
+              <div key={d.id} 
+                onClick={() => openDetails(d)}
+                className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all duration-200 group relative cursor-pointer"
                 data-testid={`debt-card-${d.id}`}
-                onClick={() => openDetail(d)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2 flex-1">
@@ -263,14 +282,14 @@ export default function Debts() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={(e) => { e.stopPropagation(); setPaymentForm({ ...paymentForm, debt_id: d.id }); setPaymentModal(true); }} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors">
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={(e) => openPayment(d.id, e)} className="text-[#6B6B6B] hover:text-[#10B981] p-1 transition-colors" title="Record Payment">
                       <CheckCircle2 size={13} />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); openEdit(d); }} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
+                    <button onClick={(e) => openEdit(d, e)} className="text-[#6B6B6B] hover:text-[#4FC3C3] p-1 transition-colors">
                       <Pencil size={13} />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(d.id); }} className="text-[#6B6B6B] hover:text-[#EF4444] p-1 transition-colors">
+                    <button onClick={(e) => handleDelete(d.id, e)} className="text-[#6B6B6B] hover:text-[#EF4444] p-1 transition-colors">
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -295,14 +314,166 @@ export default function Debts() {
                 {d.interest_rate > 0 && (
                   <p className="text-xs text-[#6B6B6B] mt-1">Interest: {d.interest_rate}%</p>
                 )}
-                <p className="text-xs text-[#4FC3C3] mt-3 font-semibold">Click to view details →</p>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Add/Edit Debt Modal */}
+      {/* Debt Details Modal */}
+      <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
+        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+          {selectedDebt && (
+            <>
+              <DialogHeader className="mb-4">
+                <div className="flex items-center justify-between pr-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#2A2A2A] flex items-center justify-center text-2xl">
+                      {TYPE_ICONS[selectedDebt.type]}
+                    </div>
+                    <div>
+                      <DialogTitle className="text-white font-black text-xl tracking-tight">
+                        {selectedDebt.name}
+                      </DialogTitle>
+                      <span className="text-xs px-1.5 py-0.5 rounded-sm capitalize" 
+                        style={{ 
+                          background: `${TYPE_COLORS[selectedDebt.type] || '#6B7280'}20`, 
+                          color: TYPE_COLORS[selectedDebt.type] || '#6B7280' 
+                        }}>
+                        {selectedDebt.type.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-3">
+                  <p className="text-[#6B6B6B] text-[10px] uppercase font-bold mb-1">Total Loan</p>
+                  <p className="text-white font-semibold text-sm tabular-nums">{fmt(selectedDebt.total_amount)} {selectedDebt.currency}</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-3">
+                  <p className="text-[#6B6B6B] text-[10px] uppercase font-bold mb-1">Remaining</p>
+                  <p className="text-[#EF4444] font-semibold text-sm tabular-nums">{fmt(selectedDebt.remaining_amount)} {selectedDebt.currency}</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-3">
+                  <p className="text-[#6B6B6B] text-[10px] uppercase font-bold mb-1">Interest Rate</p>
+                  <p className="text-white font-semibold text-sm tabular-nums">{selectedDebt.interest_rate}%</p>
+                </div>
+                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-3">
+                  <p className="text-[#6B6B6B] text-[10px] uppercase font-bold mb-1">Monthly Pay</p>
+                  <p className="text-white font-semibold text-sm tabular-nums">{fmt(selectedDebt.monthly_payment)} {selectedDebt.currency}</p>
+                </div>
+              </div>
+
+              {/* NEW: DEBT FREE PROJECTOR */}
+              {selectedDebt.monthly_payment > 0 && (
+                <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0A0A0A] border border-[#4FC3C3]/30 rounded-sm p-5 relative overflow-hidden group mb-6">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <TrendingDown size={64} className="text-[#4FC3C3]" />
+                  </div>
+                  <p className="text-[#4FC3C3] text-xs font-bold uppercase tracking-widest mb-1">Debt-Free Projection</p>
+                  
+                  {(() => {
+                    const P = selectedDebt.remaining_amount;
+                    const PMT = selectedDebt.monthly_payment;
+                    const r = (selectedDebt.interest_rate || 0) / 100 / 12;
+                    let months = 0;
+                    
+                    if (r === 0) {
+                      months = Math.ceil(P / PMT);
+                    } else if ((P * r) >= PMT) {
+                      return <p className="text-[#EF4444] font-bold">Monthly payment too low to cover interest!</p>;
+                    } else {
+                      months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
+                    }
+                    
+                    const payoffDate = new Date();
+                    payoffDate.setMonth(payoffDate.getMonth() + months);
+                    const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'long', year: 'numeric' });
+                    
+                    return (
+                      <div>
+                        <h3 className="text-white font-black text-2xl mb-1 tracking-tight">🎯 {formattedDate}</h3>
+                        <p className="text-[#A3A3A3] text-sm">
+                          At {fmt(PMT)} {selectedDebt.currency}/mo, you will be completely debt-free in <span className="text-white font-bold">{months} months</span>.
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Progress Bar */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-white">Payment Progress</span>
+                  <span className="text-sm text-[#10B981] font-bold">
+                    {((selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100).toFixed(1)}% Paid
+                  </span>
+                </div>
+                <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-[#10B981] transition-all duration-500" 
+                    style={{ width: `${(selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100}%` }} 
+                  />
+                </div>
+                <div className="flex justify-between mt-1 text-xs text-[#6B6B6B]">
+                  <span>{fmt(selectedDebt.total_amount - selectedDebt.remaining_amount)} {selectedDebt.currency} paid</span>
+                  <span>{fmt(selectedDebt.total_amount)} {selectedDebt.currency} total</span>
+                </div>
+              </div>
+
+              <div className="border-t border-[#2A2A2A] pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-widest">Transaction History</h3>
+                  <button onClick={() => openPayment(selectedDebt.id)} className="text-xs bg-[#4FC3C3]/10 text-[#4FC3C3] px-3 py-1 rounded-sm hover:bg-[#4FC3C3]/20 font-bold transition-colors">
+                    + Record Payment
+                  </button>
+                </div>
+                
+                {debtTransLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 size={24} className="animate-spin text-[#4FC3C3]" />
+                  </div>
+                ) : debtTransactions.length === 0 ? (
+                  <div className="text-center py-8 bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm">
+                    <p className="text-[#6B6B6B] text-sm">No payments recorded yet.</p>
+                  </div>
+                ) : (
+                  <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-[#2A2A2A]">
+                          <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]">Date</th>
+                          <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]">Amount</th>
+                          <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]">Action</th>
+                          <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#6B6B6B]">Note</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {debtTransactions.map((trans, idx) => (
+                          <tr key={idx} className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A]/50 transition-colors">
+                            <td className="px-4 py-3 text-xs text-[#A3A3A3]">{trans.date || '—'}</td>
+                            <td className="px-4 py-3 text-xs font-bold text-[#10B981]">{fmt(trans.amount)} {trans.currency || selectedDebt.currency}</td>
+                            <td className="px-4 py-3 text-xs capitalize">
+                              <span className="px-2 py-0.5 rounded-sm bg-[#4FC3C3]/10 text-[#4FC3C3]">
+                                {trans.type || 'payment'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-[#6B6B6B]">{trans.description || trans.note || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-md">
           <DialogHeader>
@@ -368,184 +539,6 @@ export default function Debts() {
               </button>
             </div>
           </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Debt Detail Modal */}
-      <Dialog open={detailModal} onOpenChange={setDetailModal}>
-        <DialogContent className="bg-[#1A1A1A] border border-[#2A2A2A] text-white max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader className="flex items-center justify-between">
-            <DialogTitle className="text-white font-bold text-lg flex items-center gap-2">
-              {selectedDebt && (
-                <>
-                  <span>{TYPE_ICONS[selectedDebt.type]}</span>
-                  {selectedDebt.name}
-                </>
-              )}
-            </DialogTitle>
-            <button onClick={() => setDetailModal(false)} className="text-[#6B6B6B] hover:text-white">
-              <X size={20} />
-            </button>
-          </DialogHeader>
-
-          {selectedDebt && (
-            <div className="space-y-6">
-              {/* Summary Stats */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                  <p className="text-[#6B6B6B] text-xs mb-1">Debt Type</p>
-                  <p className="text-white font-bold capitalize">{selectedDebt.type.replace(/_/g, ' ')}</p>
-                </div>
-                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                  <p className="text-[#6B6B6B] text-xs mb-1">Currency</p>
-                  <p className="text-white font-bold">{selectedDebt.currency}</p>
-                </div>
-                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                  <p className="text-[#6B6B6B] text-xs mb-1">Total Amount</p>
-                  <p className="text-white font-bold text-lg">{fmt(selectedDebt.total_amount)} {selectedDebt.currency}</p>
-                </div>
-                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                  <p className="text-[#6B6B6B] text-xs mb-1">Remaining</p>
-                  <p className="text-[#EF4444] font-bold text-lg">{fmt(selectedDebt.remaining_amount)} {selectedDebt.currency}</p>
-                </div>
-                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                  <p className="text-[#6B6B6B] text-xs mb-1">Paid</p>
-                  <p className="text-[#10B981] font-bold text-lg">{fmt(selectedDebt.total_amount - selectedDebt.remaining_amount)} {selectedDebt.currency}</p>
-                </div>
-                <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                  <p className="text-[#6B6B6B] text-xs mb-1">Progress</p>
-                  <p className="text-[#4FC3C3] font-bold text-lg">
-                    {selectedDebt.total_amount > 0 ? ((selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100).toFixed(1) : 0}%
-                  </p>
-                </div>
-              </div>
-
-              {/* Interest & Payment Info */}
-              {(selectedDebt.interest_rate > 0 || selectedDebt.monthly_payment > 0) && (
-                <div className="grid grid-cols-2 gap-3">
-                  {selectedDebt.interest_rate > 0 && (
-                    <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                      <p className="text-[#6B6B6B] text-xs mb-1">Interest Rate</p>
-                      <p className="text-white font-bold">{selectedDebt.interest_rate}%</p>
-                    </div>
-                  )}
-                  {selectedDebt.monthly_payment > 0 && (
-                    <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-4">
-                      <p className="text-[#6B6B6B] text-xs mb-1">Monthly Payment</p>
-                      <p className="text-white font-bold">{fmt(selectedDebt.monthly_payment)} {selectedDebt.currency}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* NEW: DEBT FREE PROJECTOR */}
-              {selectedDebt.monthly_payment > 0 && (
-                <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0A0A0A] border border-[#4FC3C3]/30 rounded-sm p-5 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <TrendingDown size={64} className="text-[#4FC3C3]" />
-                  </div>
-                  <p className="text-[#4FC3C3] text-xs font-bold uppercase tracking-widest mb-1">Debt-Free Projection</p>
-                  
-                  {(() => {
-                    const P = selectedDebt.remaining_amount;
-                    const PMT = selectedDebt.monthly_payment;
-                    const r = (selectedDebt.interest_rate || 0) / 100 / 12;
-                    let months = 0;
-                    
-                    if (r === 0) {
-                      months = Math.ceil(P / PMT);
-                    } else if ((P * r) >= PMT) {
-                      return <p className="text-[#EF4444] font-bold">Monthly payment too low to cover interest!</p>;
-                    } else {
-                      months = Math.ceil(-Math.log(1 - (P * r) / PMT) / Math.log(1 + r));
-                    }
-                    
-                    const payoffDate = new Date();
-                    payoffDate.setMonth(payoffDate.getMonth() + months);
-                    const formattedDate = payoffDate.toLocaleDateString('en-SE', { month: 'long', year: 'numeric' });
-                    
-                    return (
-                      <div>
-                        <h3 className="text-white font-black text-2xl mb-1 tracking-tight">🎯 {formattedDate}</h3>
-                        <p className="text-[#A3A3A3] text-sm">
-                          At {fmt(PMT)} {selectedDebt.currency}/mo, you will be completely debt-free in <span className="text-white font-bold">{months} months</span>.
-                        </p>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-                  <p className="text-white text-sm font-bold">Payment Progress</p>
-                  <span className="text-xs text-[#A3A3A3]">
-                    {fmt(selectedDebt.total_amount - selectedDebt.remaining_amount)} / {fmt(selectedDebt.total_amount)}
-                  </span>
-                </div>
-                <div className="h-3 bg-[#2A2A2A] rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-[#4FC3C3] to-[#10B981] transition-all duration-500" 
-                    style={{ width: `${selectedDebt.total_amount > 0 ? ((selectedDebt.total_amount - selectedDebt.remaining_amount) / selectedDebt.total_amount * 100) : 0}%` }} />
-                </div>
-              </div>
-
-              {/* Transactions History */}
-              <div>
-                <h3 className="text-white font-bold mb-3 flex items-center gap-2">
-                  <TrendingDown size={16} />
-                  Payment History
-                </h3>
-                {debtTransLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 size={16} className="animate-spin text-[#4FC3C3]" />
-                  </div>
-                ) : debtTransactions.length === 0 ? (
-                  <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm p-6 text-center">
-                    <p className="text-[#6B6B6B] text-sm">No payments recorded yet</p>
-                  </div>
-                ) : (
-                  <div className="bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-[#2A2A2A]">
-                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Amount</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Type</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Note</th>
-                          </tr>
-                        </thead>
-                 <tbody>
-                          {debtTransactions.map((trans, idx) => (
-                            <tr key={idx} className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A]/50 transition-colors">
-                              <td className="px-4 py-3 text-xs text-[#A3A3A3]">{trans.date || '—'}</td>
-                              <td className="px-4 py-3 text-xs font-bold text-[#10B981]">{fmt(trans.amount)} {trans.currency || selectedDebt.currency}</td>
-                              <td className="px-4 py-3 text-xs capitalize">
-                                <span className="px-2 py-0.5 rounded-sm bg-[#4FC3C3]/10 text-[#4FC3C3]">
-                                  {trans.type || 'payment'}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-xs text-[#6B6B6B]">{trans.description || trans.note || '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-[#2A2A2A]">
-                <button onClick={() => setDetailModal(false)}
-                  className="flex-1 py-2 rounded-sm border border-[#2A2A2A] text-[#A3A3A3] text-sm font-medium hover:bg-[#2A2A2A] transition-all">
-                  Close
-                </button>
-                <button onClick={() => { setPaymentForm({ ...paymentForm, debt_id: selectedDebt.id }); setPaymentModal(true); }}
-                  className="flex-1 py-2 rounded-sm bg-[#10B981] text-white text-sm font-bold hover:bg-[#059669] transition-all flex items-center justify-center gap-2">
-                  <CheckCircle2 size={13} />
-                  Record Payment
-                </button>
-              </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 

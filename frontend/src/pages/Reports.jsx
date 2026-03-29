@@ -119,10 +119,10 @@ export default function Reports() {
             <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-6">
               <h2 className="text-lg font-black text-white mb-5 tracking-tight">Expenses by Category</h2>
               <div className="space-y-3" data-testid="category-breakdown">
-                {byCategory.map((cat, idx) => {
+              {byCategory.map((cat, idx) => {
                   const color = CAT_COLORS[cat.category] || '#D7DBDB';
-                  // Fallback to 0 if cat.amount is undefined/null to prevent NaN%
-                  const safeAmount = cat.amount || 0; 
+                  // Backend sends this as 'expense', not 'amount'
+                  const safeAmount = cat.expense || 0; 
                   const pct = totalExpenses > 0 ? (safeAmount / totalExpenses) * 100 : 0;
                   return (
                     <div key={idx}>

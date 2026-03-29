@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # --- SQLALCHEMY & FASTAPI-USERS IMPORTS ---
-from sqlalchemy import Column, String, Float, Integer, Boolean, ForeignKey, JSON, Uuid, text
+from sqlalchemy import Column, String, Float, Integer, Boolean, ForeignKey, JSON, Uuid, text, desc
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.future import select
@@ -909,7 +909,7 @@ async def get_savings(user: User = Depends(current_active_user), session: AsyncS
     goals = result.scalars().all()
     data = []
     for g in goals:
-        c_result = await session.execute(select(SavingsContribution).where(SavingsContribution.goal_id == g.id).order_by(SavingsContribution.date.desc()))
+        c_result = await session.execute(select(SavingsContribution).where(SavingsContribution.goal_id == g.id).order_by(desc(SavingsContribution.date)))
         contribs = c_result.scalars().all()
         total_saved = sum(c.amount for c in contribs)
         data.append({

@@ -336,14 +336,14 @@ async def create_category(data: CategoryCreate, user: User = Depends(current_act
 # --- DB INIT ---
 
 @api_router.get("/init-db")
-async def initialize_database():
+async def init_db():
     try:
+        from backend.database import engine, Base
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        return {"status": "success", "message": "All database tables created perfectly!"}
+        return {"message": "All database tables (including Savings) created perfectly!"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
-
+        return {"error": str(e)}
 # --- TRANSACTIONS ---
 
 @api_router.get("/transactions")

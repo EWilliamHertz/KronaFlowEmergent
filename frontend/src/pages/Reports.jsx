@@ -1,45 +1,55 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Loader2, BarChart3, TrendingUp, PieChart, Calendar } from 'lucide-react';
+import { Loader2, BarChart3, TrendingUp, PieChart } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { extractNestedArray } from '../utils/apiHelpers';
 import { toast } from 'sonner';
 import { API } from '../config/api';
+
 const fmt = (n) => new Intl.NumberFormat('sv-SE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CAT_COLORS = {
   food: '#FF6B6B', transport: '#4ECDC4', housing: '#45B7D1', entertainment: '#FFA07A',
   healthcare: '#98D8C8', shopping: '#F7DC6F', utilities: '#BB8FCE', education: '#85C1E2', other: '#D7DBDB'
 };
 
+const PERIODS = [
+  { value: 'this_month', label: 'Month' },
+  { value: 'this_year', label: 'Year' },
+  { value: 'all', label: 'All Time' }
+];
+
+const TYPES = ['expense', 'income', 'both'];
+
 export default function Reports() {
   const { t } = useLanguage();
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState('month');
+  const [dateRange, setDateRange] = useState('this_month');
+  const [typeFilter, setTypeFilter] = useState('expense'); // New state for type toggle
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('session_token');
-      const res = await axios.get(`${API}/reports/summary`, {
-        params: { period: dateRange },
-        headers: { 'Authorization': `Bearer ${token}` } // Add this
+      const res = await axios.get(`${API}/reports/summary`, { 
+        params: { period: dateRange }, // Now sends 'this_month', 'this_year', or 'all'
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setAnalytics(res.data || {});
-    } catch (err) {
-      toast.error('Failed to load reports');
+    } catch (err) { 
+      toast.error('Failed to load reports'); 
       setAnalytics({});
     } finally { setLoading(false); }
   }, [dateRange]);
+
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
   const data = analytics || {};
   const byCategory = extractNestedArray(data, 'by_category');
-  const byMonth = extractNestedArray(data, 'trend');
+  const byMonth = extractNestedArray(data, 'trend'); 
   const topExpenses = [];
-
+  
   const totalIncome = data.total_income || 0;
   const totalExpenses = data.total_expenses || 0;
   const netSavings = totalIncome - totalExpenses;
@@ -49,19 +59,39 @@ export default function Reports() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-black text-white tracking-tight" style={{ fontFamily: 'Chivo, sans-serif' }}>
-          {t('reports.title')}
+          {t('reports.title') || "Reports"}
         </h1>
-        <div className="flex items-center gap-2 bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-1">
-          {['week', 'month', 'year'].map(range => (
-            <button key={range} onClick={() => setDateRange(range)}
-              className={`px-3 py-1.5 rounded-sm text-xs font-semibold capitalize transition-all ${dateRange === range
-                ? 'bg-[#4FC3C3] text-[#0A0A0A]'
-                : 'text-[#A3A3A3] hover:text-white'
+        
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Type Filter (Income/Expense/Both) */}
+          <div className="flex items-center gap-1 bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-1">
+            {TYPES.map(type => (
+              <button key={type} onClick={() => setTypeFilter(type)}
+                className={`px-3 py-1.5 rounded-sm text-xs font-semibold capitalize transition-all ${
+                  typeFilter === type
+                    ? 'bg-[#4FC3C3] text-[#0A0A0A]'
+                    : 'text-[#A3A3A3] hover:text-white'
                 }`}
-            >
-              {range}
-            </button>
-          ))}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="flex items-center gap-1 bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-1">
+            {PERIODS.map(range => (
+              <button key={range.value} onClick={() => setDateRange(range.value)}
+                className={`px-3 py-1.5 rounded-sm text-xs font-semibold capitalize transition-all ${
+                  dateRange === range.value
+                    ? 'bg-[#4FC3C3] text-[#0A0A0A]'
+                    : 'text-[#A3A3A3] hover:text-white'
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -114,27 +144,61 @@ export default function Reports() {
         </div>
       ) : (
         <>
-          {/* Expenses by Category */}
+          {/* Expenses / Income by Category */}
           {byCategory.length > 0 && (
             <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-6">
-              <h2 className="text-lg font-black text-white mb-5 tracking-tight">Expenses by Category</h2>
+              <h2 className="text-lg font-black text-white mb-5 tracking-tight capitalize">
+                {typeFilter === 'both' ? 'Transactions' : typeFilter} by Category
+              </h2>
               <div className="space-y-3" data-testid="category-breakdown">
-              {byCategory.map((cat, idx) => {
-                  const color = CAT_COLORS[cat.category] || '#D7DBDB';
-                  // Backend sends this as 'expense', not 'amount'
-                  const safeAmount = cat.expense || 0; 
-                  const pct = totalExpenses > 0 ? (safeAmount / totalExpenses) * 100 : 0;
-                  return (
-                    <div key={idx}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-white capitalize font-semibold">{cat.category}</span>
-<span className="text-sm text-[#A3A3A3] font-bold tabular-nums">{fmt(safeAmount)} ({pct.toFixed(0)}%)</span>                      </div>
-                      <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
+                {byCategory
+                  // Filter out categories that have 0 for the selected type
+                  .filter(cat => {
+                    if (typeFilter === 'expense') return cat.expense > 0;
+                    if (typeFilter === 'income') return cat.income > 0;
+                    return cat.expense > 0 || cat.income > 0;
+                  })
+                  // Sort them highest to lowest based on the selected type
+                  .sort((a, b) => {
+                    const valA = typeFilter === 'income' ? a.income : a.expense;
+                    const valB = typeFilter === 'income' ? b.income : b.expense;
+                    return valB - valA;
+                  })
+                  .map((cat, idx) => {
+                    const color = CAT_COLORS[cat.category] || '#D7DBDB';
+                    
+                    // Dynamically select the safe amount and the total to divide by
+                    let safeAmount = 0;
+                    let totalForPct = 1;
+                    
+                    if (typeFilter === 'expense') {
+                      safeAmount = cat.expense || 0;
+                      totalForPct = totalExpenses;
+                    } else if (typeFilter === 'income') {
+                      safeAmount = cat.income || 0;
+                      totalForPct = totalIncome;
+                    } else {
+                      // If "both", combine them
+                      safeAmount = (cat.expense || 0) + (cat.income || 0);
+                      totalForPct = totalExpenses + totalIncome;
+                    }
+                    
+                    const pct = totalForPct > 0 ? (safeAmount / totalForPct) * 100 : 0;
+
+                    return (
+                      <div key={idx}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-white capitalize font-semibold">{cat.category}</span>
+                          <span className="text-sm text-[#A3A3A3] font-bold tabular-nums">
+                            {fmt(safeAmount)} ({pct.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -152,7 +216,7 @@ export default function Reports() {
                     <div key={idx} className="flex-1 flex flex-col items-center gap-2">
                       <div className="w-full flex items-end justify-center gap-1 h-40">
                         {month.income > 0 && (
-                          <div className="flex-1 bg-[#10B981]/60 rounded-t-sm transition-all hover:bg-[#10B981] group"
+                          <div className="flex-1 bg-[#10B981]/60 rounded-t-sm transition-all hover:bg-[#10B981] group" 
                             style={{ height: `${incomeHeight}%` }} title={`Income: ${fmt(month.income)}`}>
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[#10B981] text-xs font-bold absolute -mt-5">
                               {fmt(month.income)}
@@ -160,7 +224,7 @@ export default function Reports() {
                           </div>
                         )}
                         {month.expenses > 0 && (
-                          <div className="flex-1 bg-[#EF4444]/60 rounded-t-sm transition-all hover:bg-[#EF4444] group"
+                          <div className="flex-1 bg-[#EF4444]/60 rounded-t-sm transition-all hover:bg-[#EF4444] group" 
                             style={{ height: `${expenseHeight}%` }} title={`Expenses: ${fmt(month.expenses)}`}>
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity text-[#EF4444] text-xs font-bold absolute -mt-5">
                               {fmt(month.expenses)}
@@ -186,7 +250,7 @@ export default function Reports() {
             </div>
           )}
 
-          {/* Top Expenses */}
+          {/* Top Expenses (Currently empty, retained for future backend support) */}
           {topExpenses.length > 0 && (
             <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-6">
               <h2 className="text-lg font-black text-white mb-4 tracking-tight">Top Transactions</h2>

@@ -78,15 +78,16 @@ export default function Debts() {
 
   useEffect(() => { fetchDebts(); }, [fetchDebts]);
 
-  // Fetch Debt Transactions
+// Fetch Debt Transactions (Uses the single debt endpoint from server.py)
   const fetchDebtTransactions = useCallback(async (debtId) => {
     setDebtTransLoading(true);
     try {
       const token = localStorage.getItem('session_token');
-      const res = await axios.get(`${API}/debts/${debtId}/transactions`, {
+      const res = await axios.get(`${API}/debts/${debtId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      const trans = extractArray(res.data, 'transactions');
+      // The backend attaches the history under the "history" key
+      const trans = res.data.history || [];
       setDebtTransactions(trans);
     } catch (err) {
       console.error('Failed to load debt transactions:', err);
@@ -95,7 +96,6 @@ export default function Debts() {
       setDebtTransLoading(false);
     }
   }, []);
-
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
   
   const openEdit = (d) => {
@@ -478,17 +478,17 @@ export default function Debts() {
                             <th className="px-4 py-3 text-left text-xs font-bold text-[#6B6B6B]">Note</th>
                           </tr>
                         </thead>
-                        <tbody>
+                 <tbody>
                           {debtTransactions.map((trans, idx) => (
                             <tr key={idx} className="border-b border-[#2A2A2A] hover:bg-[#1A1A1A]/50 transition-colors">
                               <td className="px-4 py-3 text-xs text-[#A3A3A3]">{trans.date || '—'}</td>
-                              <td className="px-4 py-3 text-xs font-bold text-[#10B981]">{fmt(trans.amount)} {selectedDebt.currency}</td>
+                              <td className="px-4 py-3 text-xs font-bold text-[#10B981]">{fmt(trans.amount)} {trans.currency || selectedDebt.currency}</td>
                               <td className="px-4 py-3 text-xs capitalize">
                                 <span className="px-2 py-0.5 rounded-sm bg-[#4FC3C3]/10 text-[#4FC3C3]">
-                                  {trans.action || trans.type || 'payment'}
+                                  {trans.type || 'payment'}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-xs text-[#6B6B6B]">{trans.note || '—'}</td>
+                              <td className="px-4 py-3 text-xs text-[#6B6B6B]">{trans.description || trans.note || '—'}</td>
                             </tr>
                           ))}
                         </tbody>

@@ -208,7 +208,8 @@ export default function Transactions() {
         const txn = txns.find(t => t.id === txnId);
         const payload = {
           ...txn,
-          categories: bulkForm.categories,
+          // Convert the array into a single string for the backend
+          category: bulkForm.categories.length > 0 ? bulkForm.categories.join(', ') : txn.category,
           date: bulkForm.date || txn.date,
           amount: parseFloat(txn.amount)
         };
@@ -237,7 +238,8 @@ export default function Transactions() {
     try {
       const payload = {
         ...form,
-        categories: form.categories, // Array of categories
+        // Convert the array into a single string for the backend
+        category: form.categories.length > 0 ? form.categories.join(', ') : 'other',
         amount: parseFloat(form.amount),
         recurring: form.recurring,
         recurrence: form.recurring ? form.recurrence : null,

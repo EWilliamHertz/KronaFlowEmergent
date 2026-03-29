@@ -99,24 +99,21 @@ class InventoryItem(Base):
     category = Column(String, nullable=True)
     description = Column(String, nullable=True)
 
+# --- NEW: SAVINGS MODELS ---
 class SavingsGoal(Base):
-    __tablename__ = "savings_goals"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    name = Column(String)
-    target_amount = Column(Float)
+    __tablename__ = "savings_goals_v2" # <--- CHANGED THIS
+    id = Column(String, primary_key=True, default=lambda: f"svg_{uuid.uuid4().hex[:12]}")
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False) # UUID matches your User table!
+    name = Column(String, nullable=False)
+    target_amount = Column(Float, nullable=False)
     target_date = Column(String, nullable=True)
     icon = Column(String, default="🎯")
 
-    contributions = relationship("SavingsContribution", back_populates="goal", cascade="all, delete-orphan")
-    user = relationship("User")
-
 class SavingsContribution(Base):
-    __tablename__ = "savings_contributions"
-    id = Column(Integer, primary_key=True, index=True)
-    goal_id = Column(Integer, ForeignKey("savings_goals.id"))
-    amount = Column(Float)
+    __tablename__ = "savings_contribs_v2" # <--- CHANGED THIS
+    id = Column(String, primary_key=True, default=lambda: f"svc_{uuid.uuid4().hex[:12]}")
+    goal_id = Column(String, ForeignKey("savings_goals_v2.id"), nullable=False) # Point to v2!
+    amount = Column(Float, nullable=False)
     contributor_name = Column(String, default="Me")
-    date = Column(String)
-
+    date = Column(String, nullable=False)
     goal = relationship("SavingsGoal", back_populates="contributions")

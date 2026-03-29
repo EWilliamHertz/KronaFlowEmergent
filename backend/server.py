@@ -170,7 +170,6 @@ class SavingsContribution(Base):
     amount = Column(Float, nullable=False)
     contributor_name = Column(String, default="Me")
     date = Column(String, nullable=False)
-
 # DB Dependency
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:

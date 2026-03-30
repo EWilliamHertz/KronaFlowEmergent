@@ -76,6 +76,7 @@ class Transaction(Base):
     recurring = Column(Boolean, default=False)
     recurrence = Column(String, nullable=True)
     linked_debt_id = Column(String, nullable=True)
+    linked_investment_id = Column(String, nullable=True)
 
 class Budget(Base):
     __tablename__ = "budgets"
@@ -94,17 +95,25 @@ class Category(Base):
     name = Column(String, nullable=False)
     type = Column(String, nullable=False)
 
-class Asset(Base):
-    __tablename__ = "assets"
-    id = Column(String, primary_key=True, default=lambda: f"ast_{uuid.uuid4().hex[:12]}")
+class Investment(Base):
+    __tablename__ = "investments"
+    id = Column(String, primary_key=True, default=lambda: f"inv_{uuid.uuid4().hex[:12]}")
     user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
-    type = Column(String, nullable=False)
     name = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    quantity = Column(Float, nullable=False)
+    buy_price = Column(Float, nullable=False)
     current_value = Column(Float, nullable=False)
-    purchase_value = Column(Float, nullable=True)
-    quantity = Column(Float, nullable=True)
+    purchase_date = Column(String, nullable=False)
     currency = Column(String, default="SEK")
     description = Column(String, nullable=True)
+
+class InvestmentHistory(Base):
+    __tablename__ = "investment_history"
+    id = Column(String, primary_key=True, default=lambda: f"ivh_{uuid.uuid4().hex[:12]}")
+    investment_id = Column(String, ForeignKey("investments.id"), nullable=False)
+    recorded_date = Column(String, nullable=False)
+    recorded_value = Column(Float, nullable=False)
 
 class Debt(Base):
     __tablename__ = "debts"
@@ -151,19 +160,7 @@ class Invoice(Base):
     total = Column(Float, nullable=False)
     status = Column(String, default="draft")
 
-class InventoryItem(Base):
-    __tablename__ = "inventory"
-    id = Column(String, primary_key=True, default=lambda: f"inv_{uuid.uuid4().hex[:12]}")
-    user_id = Column(Uuid, ForeignKey("user.id"), nullable=False)
-    name = Column(String, nullable=False)
-    sku = Column(String, nullable=True)
-    quantity = Column(Float, nullable=False)
-    buy_price = Column(Float, nullable=False)
-    b2b_price = Column(Float, nullable=True)
-    b2c_price = Column(Float, nullable=True)
-    vat_pct = Column(Float, default=25.0)
-    description = Column(String, nullable=True)
-    low_stock_threshold = Column(Float, default=5.0)
+
 
 class SavingsGoal(Base):
     __tablename__ = "savings_goals_v2" 
@@ -257,14 +254,18 @@ class BudgetCreate(BaseModel):
     year: int
     currency: str = "SEK"
 
-class AssetCreate(BaseModel):
-    type: str
+class InvestmentCreate(BaseModel):
     name: str
-    current_value: float
-    purchase_value: Optional[float] = None
-    quantity: Optional[float] = None
+    category: str
+    quantity: float
+    buy_price: float
+    purchase_date: str
     currency: str = "SEK"
     description: Optional[str] = None
+
+class InvestmentValueUpdate(BaseModel):
+    current_value: float
+    date: str
 
 class DebtCreate(BaseModel):
     name: str
@@ -317,16 +318,7 @@ class InvoiceCreate(BaseModel):
 class InvoiceStatusUpdate(BaseModel):
     status: str
 
-class InventoryItemCreate(BaseModel):
-    name: str
-    sku: Optional[str] = None
-    quantity: float
-    buy_price: float
-    b2b_price: Optional[float] = None
-    b2c_price: Optional[float] = None
-    vat_pct: float = 25.0
-    description: Optional[str] = None
-    low_stock_threshold: float = 5
+
 
 class AIInsightRequest(BaseModel):
     context: Optional[str] = None
@@ -587,47 +579,103 @@ async def delete_budget(budget_id: str, user: User = Depends(current_active_user
     await session.commit()
     return {"message": "Deleted"}
 
-@api_router.get("/assets")
-async def get_assets(type: Optional[str] = None, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    query = select(Asset).where(Asset.user_id == user.id)
-    if type: query = query.where(Asset.type == type)
-    result = await session.execute(query)
-    assets = [to_dict(a) for a in result.scalars().all()]
-    for asset in assets:
-        pv = asset.get("purchase_value") or 0
-        cv = asset.get("current_value") or 0
-        if pv > 0:
-            asset["gain_loss"] = cv - pv
-            asset["gain_loss_pct"] = round(((cv - pv) / pv) * 100, 2)
+# --- INVESTMENTS ---
+@api_router.get("/investments")
+async def get_investments(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(Investment).where(Investment.user_id == user.id))
+    investments = [to_dict(i) for i in result.scalars().all()]
+    for investment in investments:
+        buy_total = investment.get("quantity", 0) * investment.get("buy_price", 0)
+        current_total = investment.get("current_value", 0)
+        if buy_total > 0:
+            investment["profit_loss"] = current_total - buy_total
+            investment["profit_loss_pct"] = round(((current_total - buy_total) / buy_total) * 100, 2)
         else:
-            asset["gain_loss"] = 0; asset["gain_loss_pct"] = 0
-    return assets
+            investment["profit_loss"] = 0
+            investment["profit_loss_pct"] = 0
+    return investments
 
-@api_router.post("/assets")
-async def create_asset(data: AssetCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    new_asset = Asset(user_id=user.id, **data.model_dump())
-    session.add(new_asset)
+@api_router.get("/investments/{investment_id}")
+async def get_investment_detail(investment_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(Investment).where(Investment.id == investment_id, Investment.user_id == user.id))
+    investment = result.scalars().first()
+    if not investment: raise HTTPException(status_code=404, detail="Investment not found")
+    
+    inv_dict = to_dict(investment)
+    buy_total = investment.quantity * investment.buy_price
+    inv_dict["profit_loss"] = investment.current_value - buy_total
+    inv_dict["profit_loss_pct"] = round(((investment.current_value - buy_total) / buy_total) * 100, 2) if buy_total > 0 else 0
+    
+    # Get history
+    history_result = await session.execute(select(InvestmentHistory).where(InvestmentHistory.investment_id == investment_id).order_by(InvestmentHistory.recorded_date))
+    history = [to_dict(h) for h in history_result.scalars().all()]
+    inv_dict["history"] = history
+    
+    return inv_dict
+
+@api_router.post("/investments")
+async def create_investment(data: InvestmentCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    new_investment = Investment(user_id=user.id, **data.model_dump())
+    session.add(new_investment)
+    await session.flush()
+    
+    # Create initial history entry
+    initial_history = InvestmentHistory(
+        investment_id=new_investment.id,
+        recorded_date=data.purchase_date,
+        recorded_value=data.quantity * data.buy_price
+    )
+    session.add(initial_history)
+    
+    # Create transaction for the purchase
+    purchase_txn = Transaction(
+        user_id=user.id,
+        type="expense",
+        amount=data.quantity * data.buy_price,
+        category=f"Investment: {data.category}",
+        description=f"Purchase of {data.name}",
+        date=data.purchase_date,
+        currency=data.currency,
+        month=int(data.purchase_date.split("-")[1]),
+        year=int(data.purchase_date.split("-")[0]),
+        linked_investment_id=new_investment.id
+    )
+    session.add(purchase_txn)
     await session.commit()
-    await session.refresh(new_asset)
-    return to_dict(new_asset)
+    await session.refresh(new_investment)
+    return to_dict(new_investment)
 
-@api_router.put("/assets/{asset_id}")
-async def update_asset(asset_id: str, data: AssetCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    result = await session.execute(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
-    asset = result.scalars().first()
-    if not asset: raise HTTPException(status_code=404, detail="Asset not found")
-    for key, value in data.model_dump().items():
-        if value is not None: setattr(asset, key, value)
+@api_router.post("/investments/{investment_id}/update-value")
+async def update_investment_value(investment_id: str, data: InvestmentValueUpdate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(Investment).where(Investment.id == investment_id, Investment.user_id == user.id))
+    investment = result.scalars().first()
+    if not investment: raise HTTPException(status_code=404, detail="Investment not found")
+    
+    investment.current_value = data.current_value
+    
+    # Add history entry
+    new_history = InvestmentHistory(
+        investment_id=investment_id,
+        recorded_date=data.date,
+        recorded_value=data.current_value
+    )
+    session.add(new_history)
     await session.commit()
-    await session.refresh(asset)
-    return to_dict(asset)
+    await session.refresh(investment)
+    return to_dict(investment)
 
-@api_router.delete("/assets/{asset_id}")
-async def delete_asset(asset_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    result = await session.execute(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
-    asset = result.scalars().first()
-    if not asset: raise HTTPException(status_code=404, detail="Asset not found")
-    await session.delete(asset)
+@api_router.delete("/investments/{investment_id}")
+async def delete_investment(investment_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
+    result = await session.execute(select(Investment).where(Investment.id == investment_id, Investment.user_id == user.id))
+    investment = result.scalars().first()
+    if not investment: raise HTTPException(status_code=404, detail="Investment not found")
+    
+    # Delete history
+    await session.execute(text(f"DELETE FROM investment_history WHERE investment_id = '{investment_id}'"))
+    # Delete linked transactions
+    await session.execute(text(f"DELETE FROM transactions WHERE linked_investment_id = '{investment_id}'"))
+    # Delete investment
+    await session.delete(investment)
     await session.commit()
     return {"message": "Deleted"}
 
@@ -799,9 +847,9 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
     txns_res = await session.execute(select(Transaction).where(Transaction.user_id == user.id))
     all_txns = [to_dict(t) for t in txns_res.scalars().all()]
     
-    # Assets + Receivables - Debts = Net Worth
-    assets_res = await session.execute(select(Asset).where(Asset.user_id == user.id))
-    total_asset_value = sum(a.current_value for a in assets_res.scalars().all())
+    # Investments + Receivables - Debts = Net Worth
+    investments_res = await session.execute(select(Investment).where(Investment.user_id == user.id))
+    total_investments_value = sum(i.current_value for i in investments_res.scalars().all())
     
     debts_res = await session.execute(select(Debt).where(Debt.user_id == user.id))
     total_debt = sum(d.remaining_amount for d in debts_res.scalars().all())
@@ -856,9 +904,9 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
     return {
         "total_balance": total_income_all - total_expense_all,
         "monthly_income": monthly_income, "monthly_expenses": monthly_expenses,
-        "net_worth": (total_asset_value + total_receivable) - total_debt, 
+        "net_worth": (total_investments_value + total_receivable) - total_debt, 
         "recent_transactions": recent_txns,
-        "assets_total": total_asset_value, "debts_total": total_debt,
+        "investments_total": total_investments_value, "debts_total": total_debt,
         "trend": trend, "budget_overview": budget_overview,
         "forecast": forecast # Sent to the frontend
     }
@@ -945,42 +993,7 @@ async def delete_invoice(invoice_id: str, user: User = Depends(current_active_us
     await session.commit()
     return {"message": "Deleted"}
 
-@api_router.get("/inventory")
-async def get_inventory(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    result = await session.execute(select(InventoryItem).where(InventoryItem.user_id == user.id))
-    items = [to_dict(item) for item in result.scalars().all()]
-    for item in items:
-        item["total_value"] = round(item.get("quantity", 0) * item.get("buy_price", 0), 2)
-        item["low_stock"] = item.get("quantity", 0) <= item.get("low_stock_threshold", 5)
-    return items
 
-@api_router.post("/inventory")
-async def create_inventory_item(data: InventoryItemCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    new_item = InventoryItem(user_id=user.id, **data.model_dump())
-    session.add(new_item)
-    await session.commit()
-    await session.refresh(new_item)
-    return to_dict(new_item)
-
-@api_router.put("/inventory/{item_id}")
-async def update_inventory_item(item_id: str, data: InventoryItemCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    result = await session.execute(select(InventoryItem).where(InventoryItem.id == item_id, InventoryItem.user_id == user.id))
-    item = result.scalars().first()
-    if not item: raise HTTPException(status_code=404, detail="Item not found")
-    for key, value in data.model_dump().items():
-        if value is not None: setattr(item, key, value)
-    await session.commit()
-    await session.refresh(item)
-    return to_dict(item)
-
-@api_router.delete("/inventory/{item_id}")
-async def delete_inventory_item(item_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    result = await session.execute(select(InventoryItem).where(InventoryItem.id == item_id, InventoryItem.user_id == user.id))
-    item = result.scalars().first()
-    if not item: raise HTTPException(status_code=404, detail="Item not found")
-    await session.delete(item)
-    await session.commit()
-    return {"message": "Deleted"}
 
 @api_router.get("/check-db")
 async def check_database_schema(session: AsyncSession = Depends(get_async_session)):

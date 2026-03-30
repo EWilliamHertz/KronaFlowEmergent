@@ -7,11 +7,10 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
-import Assets from './pages/Assets';
+import Investments from './pages/Investments';
 import Debts from './pages/Debts';
-import Savings from './pages/Savings'; // <-- ADDED SAVINGS IMPORT
+import Savings from './pages/Savings';
 import Invoices from './pages/Invoices';
-import Inventory from './pages/Inventory';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import './App.css';
@@ -47,11 +46,10 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/transactions" element={<Transactions />} />
               <Route path="/budgets" element={<Budgets />} />
-              <Route path="/assets" element={<Assets />} />
+              <Route path="/investments" element={<Investments />} />
               <Route path="/debts" element={<Debts />} />
-              <Route path="/savings" element={<Savings />} /> {/* <-- ADDED SAVINGS ROUTE */}
+              <Route path="/savings" element={<Savings />} />
               <Route path="/invoices" element={<Invoices />} />
-              <Route path="/inventory" element={<Inventory />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
             </Route>

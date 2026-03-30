@@ -288,7 +288,7 @@ export default function Dashboard() {
             {[
               { label: 'Add Transaction', path: '/transactions', color: '#4FC3C3' },
               { label: 'Create Budget', path: '/budgets', color: '#10B981' },
-              { label: 'Add Asset', path: '/assets', color: '#8B5CF6' },
+              { label: 'Add Investment', path: '/investments', color: '#8B5CF6' },
               { label: 'Track Debt', path: '/debts', color: '#F59E0B' },
             ].map(({ label, path, color }) => (
               <button key={path} onClick={() => navigate(path)}

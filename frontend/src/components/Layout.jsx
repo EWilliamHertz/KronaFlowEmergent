@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Receipt, PieChart, TrendingUp, CreditCard,
-  Settings, Menu, Bell, LogOut, Globe, X, FileText, Package, BarChart2, PiggyBank
+  LayoutDashboard, Receipt, PieChart, Briefcase, CreditCard,
+  Settings, Menu, Bell, LogOut, Globe, X, FileText, BarChart2, PiggyBank
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -12,11 +12,10 @@ const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, key: 'nav.dashboard', label: 'Dashboard' },
   { path: '/transactions', icon: Receipt, key: 'nav.transactions', label: 'Transactions' },
   { path: '/budgets', icon: PieChart, key: 'nav.budgets', label: 'Budgets' },
-  { path: '/assets', icon: TrendingUp, key: 'nav.assets', label: 'Assets' },
+  { path: '/investments', icon: Briefcase, key: 'nav.investments', label: 'Investments' },
   { path: '/debts', icon: CreditCard, key: 'nav.debts', label: 'Debts' },
-  { path: '/savings', icon: PiggyBank, key: 'nav.savings', label: 'Savings Goals' }, // <-- ADDED SAVINGS TAB
+  { path: '/savings', icon: PiggyBank, key: 'nav.savings', label: 'Savings Goals' },
   { path: '/invoices', icon: FileText, key: 'nav.invoices', label: 'Invoices' },
-  { path: '/inventory', icon: Package, key: 'nav.inventory', label: 'Inventory' },
   { path: '/reports', icon: BarChart2, key: 'nav.reports', label: 'Reports' },
   { path: '/settings', icon: Settings, key: 'nav.settings', label: 'Settings' },
 ];

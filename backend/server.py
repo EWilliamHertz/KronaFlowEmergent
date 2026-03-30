@@ -364,6 +364,45 @@ async def init_db():
     except Exception as e:
         return {"error": str(e)}
 
+@api_router.get("/migrate-investments-schema")
+async def migrate_investments_schema(session: AsyncSession = Depends(get_async_session)):
+    """Add linked_investment_id column to transactions table if it doesn't exist"""
+    try:
+        # Check if column exists
+        check_result = await session.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name='transactions' AND column_name='linked_investment_id'")
+        )
+        if check_result.fetchone():
+            return {"message": "linked_investment_id column already exists"}
+        
+        # Add the column
+        await session.execute(
+            text("ALTER TABLE transactions ADD COLUMN linked_investment_id VARCHAR(255) NULL")
+        )
+        await session.commit()
+        return {"message": "Successfully added linked_investment_id column to transactions table"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@api_router.post("/migrate-investments-schema")
+async def migrate_investments_schema_post(session: AsyncSession = Depends(get_async_session)):
+    """POST version for iPad compatibility"""
+    try:
+        # Check if column exists
+        check_result = await session.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name='transactions' AND column_name='linked_investment_id'")
+        )
+        if check_result.fetchone():
+            return {"message": "linked_investment_id column already exists"}
+        
+        # Add the column
+        await session.execute(
+            text("ALTER TABLE transactions ADD COLUMN linked_investment_id VARCHAR(255) NULL")
+        )
+        await session.commit()
+        return {"message": "Successfully added linked_investment_id column to transactions table"}
+    except Exception as e:
+        return {"error": str(e)}
 
 @api_router.get("/categories")
 async def get_categories(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):

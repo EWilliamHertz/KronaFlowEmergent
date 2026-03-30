@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, DollarSign, Plus, ArrowRight, X, Loader2, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, DollarSign, Plus, ArrowRight, X, Loader2, AlertTriangle, Zap } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { API } from '../config/api';
@@ -149,8 +149,8 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5" data-testid="income-chart">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5" data-testid="income-chart">
           <h3 className="text-sm font-bold text-white mb-4">{t('dashboard.incomeVsExpenses')}</h3>
           {stats?.trend?.some(t => t.income > 0 || t.expenses > 0) ? (
             <ResponsiveContainer width="100%" height={200}>
@@ -181,7 +181,31 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Budget Overview */}
+        {/* NEW: 6-Month Future Forecast */}
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Zap size={100} className="text-[#8B5CF6]" /></div>
+          <div className="flex justify-between items-center mb-4 relative z-10">
+            <h3 className="text-sm font-bold text-white">6-Month Balance Forecast</h3>
+            <span className="text-[10px] uppercase font-bold text-[#8B5CF6] bg-[#8B5CF6]/10 px-2 py-0.5 rounded-sm">AI Projection</span>
+          </div>
+          {stats?.forecast?.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={stats.forecast} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" vertical={false} />
+                <XAxis dataKey="month" tick={{ fill: '#6B6B6B', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#6B6B6B', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', color: '#fff', fontSize: '12px' }} formatter={(value) => [`${fmt(value)} SEK`, 'Est. Balance']} />
+                <Line type="monotone" dataKey="projected_balance" stroke="#8B5CF6" strokeWidth={3} strokeDasharray="5 5" dot={{ fill: '#8B5CF6', r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : <div className="h-[200px] flex items-center justify-center text-[#6B6B6B] text-sm relative z-10">Need more data to predict</div>}
+        </div>
+      </div>
+
+      {/* Bottom Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        
+        {/* Budget Overview (Moved Down) */}
         <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5" data-testid="budget-overview">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-white">{t('dashboard.budgetOverview')}</h3>
@@ -219,10 +243,6 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Recent Transactions */}
         <div className="lg:col-span-2 bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5" data-testid="recent-transactions">
           <div className="flex items-center justify-between mb-4">

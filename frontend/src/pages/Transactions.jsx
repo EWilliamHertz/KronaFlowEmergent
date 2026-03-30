@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Plus, Search, Pencil, Trash2, Loader2, BarChart2, RefreshCw, Check } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Loader2, BarChart2, RefreshCw, Check, Download, Filter, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -45,7 +45,8 @@ export default function Transactions() {
   const { t } = useLanguage();
   const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ type: 'all', search: '', category: '' });
+  const [filter, setFilter] = useState({ type: 'all', search: '', category: '', start_date: '', end_date: '', min_amount: '', max_amount: '' });
+  const [showFilters, setShowFilters] = useState(false);
   const [view, setView] = useState('list');
   const [stats, setStats] = useState(null);
   const [statPeriod, setStatPeriod] = useState('');
@@ -63,6 +64,24 @@ export default function Transactions() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
+  // NEW: CSV Export Logic
+  const exportCSV = () => {
+    if (txns.length === 0) return toast.error("No transactions to export");
+    const headers = ['Date', 'Type', 'Category', 'Description', 'Party', 'Amount', 'Currency'];
+    const csvData = txns.map(t => [
+      t.date, t.type, `"${t.category || ''}"`, `"${t.description || ''}"`, `"${t.party || ''}"`, t.amount, t.currency
+    ].join(','));
+    
+    const csvString = [headers.join(','), ...csvData].join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `KronaFlow_Ledger_${today()}.csv`;
+    a.click();
+    toast.success("Ledger exported successfully!");
+  };
+
   const fetchTxns = useCallback(async () => {
     setLoading(true);
     try {
@@ -70,6 +89,10 @@ export default function Transactions() {
       if (filter.type !== 'all') params.type = filter.type;
       if (filter.category) params.category = filter.category;
       if (filter.search) params.search = filter.search;
+      if (filter.start_date) params.start_date = filter.start_date;
+      if (filter.end_date) params.end_date = filter.end_date;
+      if (filter.min_amount) params.min_amount = filter.min_amount;
+      if (filter.max_amount) params.max_amount = filter.max_amount;
       
       const token = localStorage.getItem('session_token');
       const res = await axios.get(`${API}/transactions`, { 
@@ -290,36 +313,49 @@ export default function Transactions() {
       </div>
 
       {/* View Toggle + Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden">
-          {['list','stats'].map(v => (
-            <button key={v} onClick={() => setView(v)}
-              className={`px-4 py-1.5 text-xs font-semibold transition-all ${view === v ? 'bg-[#4FC3C3] text-[#0A0A0A]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
-            >
-              {v === 'list' ? 'List' : 'Statistics'}
-            </button>
-          ))}
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden">
+            {['list','stats'].map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-4 py-1.5 text-xs font-semibold transition-all ${view === v ? 'bg-[#4FC3C3] text-[#0A0A0A]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
+              >
+                {v === 'list' ? 'List' : 'Statistics'}
+              </button>
+            ))}
+          </div>
+
+          {view === 'list' && (
+            <>
+              <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden hidden sm:flex">
+                {['all','income','expense'].map(tp => (
+                  <button key={tp} onClick={() => setFilter(f => ({ ...f, type: tp }))}
+                    className={`px-3 py-1.5 text-xs font-semibold capitalize transition-all ${filter.type === tp ? 'bg-[#4FC3C3]/20 text-[#4FC3C3]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
+                  >
+                    {tp}
+                  </button>
+                ))}
+              </div>
+              <div className="relative w-64 max-w-full">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B6B6B]" />
+                <input value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
+                  placeholder="Search description or party..." data-testid="search-input"
+                  className="w-full pl-8 pr-3 py-1.5 bg-[#1A1A1A] border border-[#2A2A2A] text-white rounded-sm text-xs focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {view === 'list' && (
-          <>
-            <div className="flex rounded-sm border border-[#2A2A2A] overflow-hidden">
-              {['all','income','expense'].map(tp => (
-                <button key={tp} onClick={() => setFilter(f => ({ ...f, type: tp }))}
-                  className={`px-3 py-1.5 text-xs font-semibold capitalize transition-all ${filter.type === tp ? 'bg-[#4FC3C3]/20 text-[#4FC3C3]' : 'bg-[#1A1A1A] text-[#A3A3A3] hover:text-white'}`}
-                >
-                  {tp}
-                </button>
-              ))}
-            </div>
-            <div className="relative flex-1 min-w-[200px] max-w-xs">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B6B6B]" />
-              <input value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
-                placeholder="Search..." data-testid="search-input"
-                className="w-full pl-8 pr-3 py-1.5 bg-[#1A1A1A] border border-[#2A2A2A] text-white rounded-sm text-xs focus:outline-none focus:ring-1 focus:ring-[#4FC3C3] placeholder:text-[#6B6B6B]"
-              />
-            </div>
-          </>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button onClick={() => setShowFilters(!showFilters)} className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 border rounded-sm text-xs font-bold transition-all ${showFilters ? 'bg-[#4FC3C3]/20 border-[#4FC3C3] text-[#4FC3C3]' : 'bg-[#1A1A1A] border-[#2A2A2A] text-[#A3A3A3] hover:text-white'}`}>
+              <Filter size={13} /> Filters
+            </button>
+            <button onClick={exportCSV} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#1A1A1A] border border-[#2A2A2A] text-[#A3A3A3] rounded-sm text-xs font-bold hover:text-white hover:border-[#A3A3A3] transition-all">
+              <Download size={13} /> Export
+            </button>
+          </div>
         )}
 
         {view === 'stats' && (
@@ -334,6 +370,37 @@ export default function Transactions() {
           </div>
         )}
       </div>
+
+      {/* Advanced Filters Panel */}
+      {view === 'list' && showFilters && (
+        <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4 grid grid-cols-1 md:grid-cols-4 gap-4 animate-fadeIn">
+          <div>
+            <label className="text-[10px] uppercase font-bold text-[#6B6B6B] mb-1 block">Type</label>
+            <select value={filter.type} onChange={e => setFilter({...filter, type: e.target.value})} className="w-full p-2 bg-[#0A0A0A] border border-[#2A2A2A] text-sm text-white rounded-sm focus:outline-none focus:border-[#4FC3C3]">
+              <option value="all">All Types</option><option value="income">Income</option><option value="expense">Expense</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase font-bold text-[#6B6B6B] mb-1 block">Date Range</label>
+            <div className="flex gap-2">
+              <input type="date" value={filter.start_date} onChange={e => setFilter({...filter, start_date: e.target.value})} className="w-full p-1.5 bg-[#0A0A0A] border border-[#2A2A2A] text-xs text-white rounded-sm focus:outline-none focus:border-[#4FC3C3] [color-scheme:dark]" title="Start Date" />
+              <input type="date" value={filter.end_date} onChange={e => setFilter({...filter, end_date: e.target.value})} className="w-full p-1.5 bg-[#0A0A0A] border border-[#2A2A2A] text-xs text-white rounded-sm focus:outline-none focus:border-[#4FC3C3] [color-scheme:dark]" title="End Date" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase font-bold text-[#6B6B6B] mb-1 block">Amount Range (SEK)</label>
+            <div className="flex gap-2">
+              <input type="number" placeholder="Min" value={filter.min_amount} onChange={e => setFilter({...filter, min_amount: e.target.value})} className="w-full p-1.5 bg-[#0A0A0A] border border-[#2A2A2A] text-xs text-white rounded-sm focus:outline-none focus:border-[#4FC3C3]" />
+              <input type="number" placeholder="Max" value={filter.max_amount} onChange={e => setFilter({...filter, max_amount: e.target.value})} className="w-full p-1.5 bg-[#0A0A0A] border border-[#2A2A2A] text-xs text-white rounded-sm focus:outline-none focus:border-[#4FC3C3]" />
+            </div>
+          </div>
+          <div className="flex items-end">
+            <button onClick={() => setFilter({ type: 'all', search: '', category: '', start_date: '', end_date: '', min_amount: '', max_amount: '' })} className="w-full py-2 bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 rounded-sm text-xs font-bold hover:bg-[#EF4444]/20 transition-colors">
+              Reset Filters
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Transactions Table */}
       {view === 'list' && (

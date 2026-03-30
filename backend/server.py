@@ -396,19 +396,27 @@ async def get_transactions(
     type: Optional[str] = None,
     category: Optional[str] = None,
     search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    min_amount: Optional[float] = None,
+    max_amount: Optional[float] = None,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     query = select(Transaction).where(Transaction.user_id == user.id)
-    if type: query = query.where(Transaction.type == type)
+    if type and type != 'all': query = query.where(Transaction.type == type)
     if category: query = query.where(Transaction.category == category)
+    if start_date: query = query.where(Transaction.date >= start_date)
+    if end_date: query = query.where(Transaction.date <= end_date)
+    if min_amount is not None: query = query.where(Transaction.amount >= min_amount)
+    if max_amount is not None: query = query.where(Transaction.amount <= max_amount)
+    
     result = await session.execute(query)
     txns = [to_dict(t) for t in result.scalars().all()]
     if search:
         sl = search.lower()
         txns = [t for t in txns if sl in (t.get("description") or "").lower() or sl in (t.get("party") or "").lower()]
     return sorted(txns, key=lambda x: x.get("date", ""), reverse=True)
-
 @api_router.post("/transactions")
 async def create_transaction(data: TransactionCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     from datetime import timedelta
@@ -807,6 +815,7 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
     total_income_all = sum(t["amount"] for t in all_txns if t["type"] == "income")
     total_expense_all = sum(t["amount"] for t in all_txns if t["type"] == "expense")
     recent_txns = sorted(all_txns, key=lambda x: x.get("date", ""), reverse=True)[:5]
+    
     trend = []
     for i in range(5, -1, -1):
         m = current_month - i; y = current_year
@@ -815,6 +824,26 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
         inc = sum(t["amount"] for t in month_txns if t["type"] == "income")
         exp = sum(t["amount"] for t in month_txns if t["type"] == "expense")
         trend.append({"month": datetime(y, m, 1).strftime("%b"), "income": inc, "expenses": exp})
+        
+    # NEW: 6-Month Cashflow Forecast
+    past_3_months = trend[-3:] if len(trend) >= 3 else trend
+    avg_inc = sum(t["income"] for t in past_3_months) / len(past_3_months) if past_3_months else 0
+    avg_exp = sum(t["expenses"] for t in past_3_months) / len(past_3_months) if past_3_months else 0
+    
+    forecast = []
+    current_sim_balance = total_income_all - total_expense_all
+    for i in range(1, 7):
+        fm = current_month + i
+        fy = current_year
+        while fm > 12:
+            fm -= 12
+            fy += 1
+        current_sim_balance += (avg_inc - avg_exp)
+        forecast.append({
+            "month": datetime(fy, fm, 1).strftime("%b %y"),
+            "projected_balance": round(current_sim_balance, 2)
+        })
+
     budgets_res = await session.execute(select(Budget).where(Budget.user_id == user.id, Budget.month == current_month, Budget.year == current_year))
     budget_overview = []
     for budget in budgets_res.scalars().all():
@@ -823,15 +852,16 @@ async def get_dashboard_stats(user: User = Depends(current_active_user), session
             "category": budget.category, "allocated": budget.allocated_amount, "spent": spent,
             "percentage": round((spent / budget.allocated_amount * 100) if budget.allocated_amount > 0 else 0, 1)
         })
+        
     return {
         "total_balance": total_income_all - total_expense_all,
         "monthly_income": monthly_income, "monthly_expenses": monthly_expenses,
         "net_worth": (total_asset_value + total_receivable) - total_debt, 
         "recent_transactions": recent_txns,
         "assets_total": total_asset_value, "debts_total": total_debt,
-        "trend": trend, "budget_overview": budget_overview
+        "trend": trend, "budget_overview": budget_overview,
+        "forecast": forecast # Sent to the frontend
     }
-
 @api_router.post("/ai/insights")
 async def get_ai_insights(data: AIInsightRequest, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
     now = datetime.now(timezone.utc)

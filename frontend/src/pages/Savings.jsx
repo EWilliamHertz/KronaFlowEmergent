@@ -138,20 +138,28 @@ export default function Savings() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {goals.map(goal => {
+         {goals.map(goal => {
             const pct = goal.target_amount > 0 ? (goal.total_saved / goal.target_amount) * 100 : 0;
+            const isComplete = pct >= 100;
             const contributors = new Set(goal.contributions.map(c => c.contributor_name)).size;
             
             return (
               <div key={goal.id} onClick={() => { setSelectedGoal(goal); setDetailModal(true); }}
-                className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-5 hover:border-[#4FC3C3]/30 transition-all cursor-pointer group flex flex-col justify-between"
+                className={`border rounded-sm p-5 transition-all cursor-pointer group flex flex-col justify-between relative overflow-hidden ${
+                  isComplete ? 'bg-[#10B981]/10 border-[#10B981]/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-[#1A1A1A] border-[#2A2A2A] hover:border-[#4FC3C3]/30'
+                }`}
               >
+                {/* NEW: Celebration Overlay */}
+                {isComplete && (
+                  <div className="absolute -right-6 -top-6 w-24 h-24 bg-[#10B981] rounded-full blur-2xl opacity-20 pointer-events-none" />
+                )}
+
                 <div>
-                  <div className="flex justify-between items-start mb-4">
+                  <div className="flex justify-between items-start mb-4 relative z-10">
                     <div className="flex items-center gap-3">
                       <span className="text-3xl">{goal.icon}</span>
                       <div>
-                        <h3 className="text-white font-bold text-lg leading-tight">{goal.name}</h3>
+                        <h3 className={`font-bold text-lg leading-tight ${isComplete ? 'text-[#10B981]' : 'text-white'}`}>{goal.name}</h3>
                         {contributors > 1 && (
                           <span className="inline-flex items-center gap-1 text-[10px] bg-[#8B5CF6]/20 text-[#8B5CF6] px-1.5 py-0.5 rounded-sm font-bold uppercase mt-1">
                             <Users size={10} /> Shared ({contributors})
@@ -164,6 +172,19 @@ export default function Savings() {
                     </button>
                   </div>
 
+                  <div className="mb-2 flex justify-between items-end relative z-10">
+                    <p className="text-white font-black tabular-nums text-xl">{fmt(goal.total_saved)} SEK</p>
+                    <p className={`${isComplete ? 'text-[#10B981]' : 'text-[#6B6B6B]'} text-xs font-bold`}>
+                      {isComplete ? '🎉 GOAL REACHED!' : `of ${fmt(goal.target_amount)}`}
+                    </p>
+                  </div>
+                  <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden mb-1 relative z-10">
+                    <div className={`h-full transition-all duration-700 ${isComplete ? 'bg-[#10B981]' : 'bg-[#4FC3C3]'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
                   <div className="mb-2 flex justify-between items-end">
                     <p className="text-white font-black tabular-nums text-xl">{fmt(goal.total_saved)} SEK</p>
                     <p className="text-[#6B6B6B] text-xs">of {fmt(goal.target_amount)}</p>

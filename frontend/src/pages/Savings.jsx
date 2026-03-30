@@ -35,7 +35,6 @@ export default function Savings() {
       const res = await axios.get(`${API}/savings`, { headers: { 'Authorization': `Bearer ${token}` } });
       setGoals(Array.isArray(res.data) ? res.data : []);
       
-      // Update selected goal if details modal is open
       if (selectedGoal) {
         const updated = res.data.find(g => g.id === selectedGoal.id);
         if (updated) setSelectedGoal(updated);
@@ -74,7 +73,7 @@ export default function Savings() {
       }, { headers: { 'Authorization': `Bearer ${token}` } });
       toast.success('Contribution added!');
       setContribModal(false);
-      fetchGoals(); // Will automatically update the selectedGoal data
+      fetchGoals(); 
     } catch { toast.error('Failed to add contribution'); } 
     finally { setSaving(false); }
   };
@@ -138,7 +137,7 @@ export default function Savings() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-         {goals.map(goal => {
+          {goals.map(goal => {
             const pct = goal.target_amount > 0 ? (goal.total_saved / goal.target_amount) * 100 : 0;
             const isComplete = pct >= 100;
             const contributors = new Set(goal.contributions.map(c => c.contributor_name)).size;
@@ -149,7 +148,7 @@ export default function Savings() {
                   isComplete ? 'bg-[#10B981]/10 border-[#10B981]/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-[#1A1A1A] border-[#2A2A2A] hover:border-[#4FC3C3]/30'
                 }`}
               >
-                {/* NEW: Celebration Overlay */}
+                {/* Celebration Overlay */}
                 {isComplete && (
                   <div className="absolute -right-6 -top-6 w-24 h-24 bg-[#10B981] rounded-full blur-2xl opacity-20 pointer-events-none" />
                 )}
@@ -181,23 +180,12 @@ export default function Savings() {
                   <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden mb-1 relative z-10">
                     <div className={`h-full transition-all duration-700 ${isComplete ? 'bg-[#10B981]' : 'bg-[#4FC3C3]'}`} style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
-                </div>
-              </div>
-            );
-          })}
-                  <div className="mb-2 flex justify-between items-end">
-                    <p className="text-white font-black tabular-nums text-xl">{fmt(goal.total_saved)} SEK</p>
-                    <p className="text-[#6B6B6B] text-xs">of {fmt(goal.target_amount)}</p>
-                  </div>
-                  <div className="h-2 bg-[#2A2A2A] rounded-full overflow-hidden mb-1">
-                    <div className="h-full bg-[#4FC3C3] transition-all duration-700" style={{ width: `${Math.min(100, pct)}%` }} />
-                  </div>
-                  <p className="text-right text-[#4FC3C3] text-[10px] font-bold">{pct.toFixed(1)}% Funded</p>
+                  <p className={`text-right text-[10px] font-bold ${isComplete ? 'text-[#10B981]' : 'text-[#4FC3C3]'}`}>{pct.toFixed(1)}% Funded</p>
                 </div>
 
                 {goal.target_date && (
-                  <div className="mt-4 pt-3 border-t border-[#2A2A2A] flex items-center gap-2 text-[#A3A3A3] text-xs">
-                    <Calendar size={12} className="text-[#F59E0B]" /> Target: {new Date(goal.target_date).toLocaleDateString('en-SE', { month: 'short', year: 'numeric' })}
+                  <div className="mt-4 pt-3 border-t border-[#2A2A2A] flex items-center gap-2 text-[#A3A3A3] text-xs relative z-10">
+                    <Calendar size={12} className={isComplete ? "text-[#10B981]" : "text-[#F59E0B]"} /> Target: {new Date(goal.target_date).toLocaleDateString('en-SE', { month: 'short', year: 'numeric' })}
                   </div>
                 )}
               </div>

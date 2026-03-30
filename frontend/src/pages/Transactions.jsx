@@ -45,11 +45,13 @@ export default function Transactions() {
   const { t } = useLanguage();
   const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ type: 'all', search: '', category: '', start_date: '', end_date: '', min_amount: '', max_amount: '' });
-  const [showFilters, setShowFilters] = useState(false);
   const [view, setView] = useState('list');
   const [stats, setStats] = useState(null);
   const [statPeriod, setStatPeriod] = useState('');
+  
+  // Advanced Filters State
+  const [showFilters, setShowFilters] = useState(false);
+  const [filter, setFilter] = useState({ type: 'all', search: '', category: '', start_date: '', end_date: '', min_amount: '', max_amount: '' });
   
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -64,7 +66,7 @@ export default function Transactions() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  // NEW: CSV Export Logic
+  // CSV Export
   const exportCSV = () => {
     if (txns.length === 0) return toast.error("No transactions to export");
     const headers = ['Date', 'Type', 'Category', 'Description', 'Party', 'Amount', 'Currency'];
@@ -412,7 +414,7 @@ export default function Transactions() {
           ) : txns.length === 0 ? (
             <div className="p-12 flex flex-col items-center gap-3">
               <BarChart2 size={32} className="text-[#2A2A2A]" />
-              <p className="text-[#6B6B6B] text-sm">No transactions found.</p>
+              <p className="text-[#6B6B6B] text-sm">No transactions match your filters.</p>
               <button onClick={openAdd} className="text-[#4FC3C3] text-xs font-semibold hover:underline">Add one now</button>
             </div>
           ) : (
@@ -421,11 +423,11 @@ export default function Transactions() {
                 <thead>
                   <tr className="border-b border-[#2A2A2A]">
                     <th className="px-4 py-3 text-left">
-                      <input type="checkbox" checked={selectedTxns.size === txns.length} onChange={toggleAllTxns}
+                      <input type="checkbox" checked={selectedTxns.size === txns.length && txns.length > 0} onChange={toggleAllTxns}
                         className="w-4 h-4 cursor-pointer"
                       />
                     </th>
-                    {['Date','Description','Category','Party','Amount',''].map(h => (
+                    {['Date','Description','Categories','Party','Amount',''].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-widest text-[#6B6B6B]">{h}</th>
                     ))}
                   </tr>
@@ -455,7 +457,7 @@ export default function Transactions() {
                           <div className="flex flex-wrap gap-1">
                             {catArray.length > 0 ? (
                               catArray.map((cat, idx) => (
-                                <span key={idx} className="px-2 py-0.5 rounded-sm text-xs font-medium capitalize"
+                                <span key={idx} className="px-2 py-0.5 rounded-sm text-[10px] font-bold capitalize"
                                   style={{ background: `${CATEGORY_COLORS[cat] || '#6B7280'}20`, color: CATEGORY_COLORS[cat] || '#6B7280' }}>
                                   {cat}
                                 </span>
@@ -636,7 +638,7 @@ export default function Transactions() {
               )}
             </div>
 
-            {/* NEW: RECURRING SECTION */}
+            {/* RECURRING SECTION */}
             <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-sm p-4 mt-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.recurring} 

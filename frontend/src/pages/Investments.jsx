@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, Trash2, TrendingUp, TrendingDown, LineChart as LineChartIcon,
@@ -32,7 +32,7 @@ export default function Investments() {
   });
 
   // Fetch investments
-  const fetchInvestments = async () => {
+  const fetchInvestments = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`${API_URL}/api/investments`, {
@@ -47,11 +47,11 @@ export default function Investments() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (token) fetchInvestments();
-  }, [token]);
+  }, [token, fetchInvestments]);
 
   // Create investment
   const handleAddInvestment = async (e) => {

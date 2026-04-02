@@ -71,8 +71,8 @@ export default function Layout() {
               }
             >
               <Icon size={17} />
-              {/* Uses translation key, falls back to raw label if missing */}
-              <span>{t(key) || label}</span>
+            {/* Uses translation key, falls back to raw label if missing */}
+              <span>{t(key) === key ? label : t(key)}</span>
             </NavLink>
           ))}
         </nav>

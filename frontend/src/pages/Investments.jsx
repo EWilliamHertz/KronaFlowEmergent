@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { API } from '../config/api';
 import {
@@ -11,15 +10,22 @@ import { toast } from 'sonner';
 
 export default function Investments() {
   const [investments, setInvestments] = useState([]);
+  const [categories, setCategories] = useState([]); // Global categories
   const [loading, setLoading] = useState(true);
+  
+  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedInvestment, setSelectedInvestment] = useState(null);
   const [saving, setSaving] = useState(false);
   
+  // Category Creation State
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  
   const [formData, setFormData] = useState({
-    name: '', category: '', quantity: '', buy_price: '', purchase_date: '', description: '', currency: 'SEK'
+    name: '', categories: [], quantity: '', buy_price: '', purchase_date: '', description: '', currency: 'SEK'
   });
   
   const [updateData, setUpdateData] = useState({
@@ -41,17 +47,56 @@ export default function Investments() {
     }
   }, []);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('session_token');
+      const res = await axios.get(`${API}/categories`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setCategories(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to fetch categories");
+    }
+  }, []);
+
   useEffect(() => {
     fetchInvestments();
-  }, [fetchInvestments]);
+    fetchCategories();
+  }, [fetchInvestments, fetchCategories]);
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      const token = localStorage.getItem('session_token');
+      const res = await axios.post(`${API}/categories`, {
+        name: newCategoryName,
+        type: 'investment' // Label it as an investment category
+      }, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      setCategories([...categories, res.data]);
+      setFormData(f => ({ ...f, categories: [...f.categories, res.data.name] }));
+      
+      setNewCategoryName("");
+      setIsAddingCategory(false);
+      toast.success('Category created!');
+    } catch (err) {
+      toast.error("Failed to create category");
+    }
+  };
 
   const handleAddInvestment = async (e) => {
     e.preventDefault();
+    if (formData.categories.length === 0) {
+      return toast.error("Please select or create at least one category");
+    }
     setSaving(true);
     try {
       const token = localStorage.getItem('session_token');
       await axios.post(`${API}/investments`, {
         ...formData,
+        category: formData.categories.join(', '), // Join array into a string for the backend
         quantity: parseFloat(formData.quantity),
         buy_price: parseFloat(formData.buy_price),
         current_value: parseFloat(formData.quantity) * parseFloat(formData.buy_price) // Default current value
@@ -60,7 +105,8 @@ export default function Investments() {
       });
       toast.success('Investment created successfully!');
       setShowAddModal(false);
-      setFormData({ name: '', category: '', quantity: '', buy_price: '', purchase_date: '', description: '', currency: 'SEK' });
+      setFormData({ name: '', categories: [], quantity: '', buy_price: '', purchase_date: '', description: '', currency: 'SEK' });
+      setIsAddingCategory(false);
       fetchInvestments();
     } catch (error) {
       toast.error('Failed to create investment');
@@ -95,7 +141,8 @@ export default function Investments() {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, e) => {
+    if (e) e.stopPropagation();
     if (!window.confirm('Are you sure? This will delete the investment and all related transactions.')) return;
     try {
       const token = localStorage.getItem('session_token');
@@ -128,8 +175,6 @@ export default function Investments() {
   const profitLoss = currentValue - totalInvested;
   const profitLossPct = totalInvested > 0 ? ((profitLoss / totalInvested) * 100).toFixed(2) : 0;
 
-  const categoryPresets = ['Pokemon', 'Magic: The Gathering', 'Sealed Boxes', 'Stocks', 'Cryptocurrencies', 'Collectibles', 'Art', 'Real Estate', 'Other'];
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -139,13 +184,14 @@ export default function Investments() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6" data-testid="investments-page">
+      <div className="flex justify-between items-center flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-black text-white" style={{ fontFamily: 'Chivo, sans-serif' }}>Investments</h1>
           <p className="text-[#A3A3A3] text-xs mt-1">Track your collectibles and assets</p>
         </div>
-        <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-4 py-2 bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold rounded-sm hover:bg-[#3BA6A6] transition-colors shadow-[0_0_10px_rgba(79,195,195,0.3)]">
+        <button onClick={() => { setFormData({ name: '', categories: [], quantity: '', buy_price: '', purchase_date: '', description: '', currency: 'SEK' }); setShowAddModal(true); setIsAddingCategory(false); }} 
+          className="flex items-center gap-2 px-4 py-2 bg-[#4FC3C3] text-[#0A0A0A] text-sm font-bold rounded-sm hover:bg-[#3BA6A6] transition-colors shadow-[0_0_10px_rgba(79,195,195,0.3)]">
           <Plus size={15} /> Add Investment
         </button>
       </div>
@@ -189,9 +235,15 @@ export default function Investments() {
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h3 className="text-white font-bold text-lg leading-tight mb-1">{inv.name}</h3>
-                  <span className="text-[10px] bg-[#2A2A2A] text-[#A3A3A3] px-2 py-0.5 rounded-sm uppercase font-bold">{inv.category}</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {(inv.category || 'Uncategorized').split(',').map((cat, idx) => (
+                      <span key={idx} className="text-[10px] bg-[#2A2A2A] text-[#A3A3A3] px-2 py-0.5 rounded-sm uppercase font-bold">
+                        {cat.trim()}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); handleDelete(inv.id); }} className="text-[#6B6B6B] hover:text-[#EF4444] opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                <button onClick={(e) => handleDelete(inv.id, e)} className="text-[#6B6B6B] hover:text-[#EF4444] opacity-0 group-hover:opacity-100 transition-opacity p-1">
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -224,25 +276,72 @@ export default function Investments() {
                 <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Item Name</label>
                 <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., 1st Edition Charizard" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#4FC3C3] outline-none" required />
               </div>
+
+              {/* MULTI-CATEGORY SECTION */}
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Category</label>
-                <div className="space-y-2">
-                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#4FC3C3] outline-none">
-                    <option value="">Select or type category</option>
-                    {categoryPresets.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                  <input type="text" value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} placeholder="Or type custom category" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#4FC3C3] outline-none" required />
+                <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-2 block">Categories (Select Multiple)</label>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {(Array.isArray(categories) ? categories : [])
+                    .filter(c => c.type === 'investment' || c.type === 'expense') // Show relevant categories
+                    .map(cat => (
+                      <label key={cat.id} className="flex items-center gap-2 p-2 hover:bg-[#0A0A0A] rounded-sm cursor-pointer">
+                        <input type="checkbox" checked={formData.categories.includes(cat.name)} onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData(f => ({ ...f, categories: [...f.categories, cat.name] }));
+                          } else {
+                            setFormData(f => ({ ...f, categories: f.categories.filter(c => c !== cat.name) }));
+                          }
+                        }}
+                          className="w-4 h-4 cursor-pointer accent-[#4FC3C3]"
+                        />
+                        <span className="text-sm text-white capitalize">{cat.name}</span>
+                      </label>
+                    ))}
                 </div>
+
+                {!isAddingCategory ? (
+                  <button 
+                      type="button" 
+                      onClick={() => setIsAddingCategory(true)}
+                      className="text-xs text-[#4FC3C3] hover:underline flex items-center gap-1 mt-2 font-semibold"
+                  >
+                      <Plus size={12} /> Create new category
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 mt-2 p-2 bg-[#0A0A0A] rounded-sm border border-[#2A2A2A]">
+                      <input 
+                          type="text" 
+                          placeholder="New category name" 
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          className="flex-1 px-2 py-1 bg-[#1A1A1A] border border-[#2A2A2A] text-white rounded-sm text-xs focus:outline-none"
+                      />
+                      <button 
+                          type="button"
+                          onClick={handleCreateCategory}
+                          className="bg-[#4FC3C3] text-[#0A0A0A] px-3 py-1 rounded-sm text-xs font-bold"
+                      >
+                          Save
+                      </button>
+                      <button 
+                          type="button"
+                          onClick={() => { setIsAddingCategory(false); setNewCategoryName(""); }}
+                          className="text-[#6B6B6B] hover:text-white px-2 py-1 text-xs"
+                      >
+                          Cancel
+                      </button>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Quantity</label>
-                  <input type="number" step="0.01" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} placeholder="e.g., 1" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#4FC3C3] outline-none" required />
+                  <input type="number" step="0.01" min="0" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} placeholder="e.g., 1" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#4FC3C3] outline-none" required />
                 </div>
                 <div>
                   <label className="text-xs font-bold uppercase tracking-widest text-[#4FC3C3] mb-1 block">Buy Price (per unit)</label>
-                  <input type="number" step="0.01" value={formData.buy_price} onChange={(e) => setFormData({ ...formData, buy_price: e.target.value })} placeholder="e.g., 5000" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#4FC3C3] outline-none" required />
+                  <input type="number" step="0.01" min="0" value={formData.buy_price} onChange={(e) => setFormData({ ...formData, buy_price: e.target.value })} placeholder="e.g., 5000" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#4FC3C3] outline-none" required />
                 </div>
               </div>
 
@@ -274,7 +373,13 @@ export default function Investments() {
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-white tracking-tight">{selectedInvestment.name}</h2>
-                <span className="text-[10px] bg-[#2A2A2A] text-[#A3A3A3] px-2 py-0.5 rounded-sm uppercase font-bold mt-2 inline-block">{selectedInvestment.category}</span>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {(selectedInvestment.category || 'Uncategorized').split(',').map((cat, idx) => (
+                    <span key={idx} className="text-[10px] bg-[#2A2A2A] text-[#A3A3A3] px-2 py-0.5 rounded-sm uppercase font-bold">
+                      {cat.trim()}
+                    </span>
+                  ))}
+                </div>
               </div>
               <button onClick={() => { setShowDetailModal(false); setSelectedInvestment(null); }} className="text-[#A3A3A3] hover:text-white p-1">
                 <X size={20} />
@@ -345,7 +450,7 @@ export default function Investments() {
             <form onSubmit={handleUpdateValue} className="space-y-4">
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-[#8B5CF6] mb-1 block">Total Current Value (SEK)</label>
-                <input type="number" step="0.01" value={updateData.current_value} onChange={(e) => setUpdateData({ ...updateData, current_value: e.target.value })} placeholder="e.g., 5500" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#8B5CF6] outline-none" required />
+                <input type="number" step="0.01" min="0" value={updateData.current_value} onChange={(e) => setUpdateData({ ...updateData, current_value: e.target.value })} placeholder="e.g., 5500" className="w-full bg-[#0A0A0A] border border-[#2A2A2A] rounded-sm px-3 py-2 text-white text-sm focus:border-[#8B5CF6] outline-none" required />
               </div>
 
               <div>

@@ -654,7 +654,20 @@ async def get_investment_detail(investment_id: str, user: User = Depends(current
 
 @api_router.post("/investments")
 async def create_investment(data: InvestmentCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    new_investment = Investment(user_id=user.id, **data.model_dump())
+    # Calculate current_value as initial purchase value
+    initial_value = data.quantity * data.buy_price
+    
+    new_investment = Investment(
+        user_id=user.id,
+        name=data.name,
+        category=data.category,
+        quantity=data.quantity,
+        buy_price=data.buy_price,
+        current_value=initial_value,
+        purchase_date=data.purchase_date,
+        currency=data.currency,
+        description=data.description
+    )
     session.add(new_investment)
     await session.flush()
     
@@ -662,7 +675,7 @@ async def create_investment(data: InvestmentCreate, user: User = Depends(current
     initial_history = InvestmentHistory(
         investment_id=new_investment.id,
         recorded_date=data.purchase_date,
-        recorded_value=data.quantity * data.buy_price
+        recorded_value=initial_value
     )
     session.add(initial_history)
     
@@ -670,7 +683,7 @@ async def create_investment(data: InvestmentCreate, user: User = Depends(current
     purchase_txn = Transaction(
         user_id=user.id,
         type="expense",
-        amount=data.quantity * data.buy_price,
+        amount=initial_value,
         category=f"Investment: {data.category}",
         description=f"Purchase of {data.name}",
         date=data.purchase_date,
@@ -751,67 +764,6 @@ async def get_investment_detail(investment_id: str, user: User = Depends(current
     
     return inv_dict
 
-@api_router.post("/investments")
-async def create_investment(data: InvestmentCreate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    new_investment = Investment(user_id=user.id, **data.model_dump())
-    session.add(new_investment)
-    await session.flush()
-    
-    # Create initial history entry automatically
-    initial_history = InvestmentHistory(
-        investment_id=new_investment.id,
-        recorded_date=data.purchase_date,
-        recorded_value=data.quantity * data.buy_price 
-    )
-    session.add(initial_history)
-    
-    # Create transaction for the purchase automatically
-    purchase_txn = Transaction(
-        user_id=user.id,
-        type="expense",
-        amount=data.quantity * data.buy_price,
-        category=f"Investment: {data.category}",
-        description=f"Purchase of {data.name}",
-        date=data.purchase_date,
-        currency=data.currency,
-        month=int(data.purchase_date.split("-")[1]),
-        year=int(data.purchase_date.split("-")[0]),
-        linked_investment_id=new_investment.id
-    )
-    session.add(purchase_txn)
-    await session.commit()
-    await session.refresh(new_investment)
-    return to_dict(new_investment)
-
-@api_router.post("/investments/{investment_id}/update-value")
-async def update_investment_value(investment_id: str, data: InvestmentValueUpdate, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    result = await session.execute(select(Investment).where(Investment.id == investment_id, Investment.user_id == user.id))
-    investment = result.scalars().first()
-    if not investment: raise HTTPException(status_code=404, detail="Investment not found")
-    
-    investment.current_value = data.current_value
-    
-    new_history = InvestmentHistory(
-        investment_id=investment_id,
-        recorded_date=data.date,
-        recorded_value=data.current_value
-    )
-    session.add(new_history)
-    await session.commit()
-    await session.refresh(investment)
-    return to_dict(investment)
-
-@api_router.delete("/investments/{investment_id}")
-async def delete_investment(investment_id: str, user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
-    result = await session.execute(select(Investment).where(Investment.id == investment_id, Investment.user_id == user.id))
-    investment = result.scalars().first()
-    if not investment: raise HTTPException(status_code=404, detail="Investment not found")
-    
-    await session.execute(text(f"DELETE FROM investment_history WHERE investment_id = '{investment_id}'"))
-    await session.execute(text(f"DELETE FROM transactions WHERE linked_investment_id = '{investment_id}'"))
-    await session.delete(investment)
-    await session.commit()
-    return {"message": "Deleted"}
 # --- DEBTS ---
 @api_router.get("/debts")
 async def get_debts(user: User = Depends(current_active_user), session: AsyncSession = Depends(get_async_session)):
